@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  orcano:
+    build:
+      context: .
+    shm_size: '1gb' # need more shm for Dolphin to avoid SIGBUS
+    volumes:
+      - ./data:/tmp/orcano_data # TODO: Assign final directory
+    ports:
+      - 53273:53273
+#      - 55020:55020 # for debugging
+    restart: unless-stopped
