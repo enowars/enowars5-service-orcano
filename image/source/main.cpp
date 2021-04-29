@@ -1,3 +1,6 @@
+#include "util.h"
+#include "sleep.h"
+
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -29,6 +32,50 @@ void hostWriteMsg(uint32_t ident, uint32_t len, const void *data)
 	}
 }
 
+// Read all or nothing in one shot.
+bool hostTryRead(void *data, int size)
+{
+	uint8_t *data_left = (uint8_t *)data;
+	int size_left = size;
+
+	bool first = true;
+	while (size_left > 0)
+	{
+		int got = usb_recvbuffer(kGeckoExiChan, data_left, size_left);
+
+		// Abort if this is the first run through, otherwise we gotta see it
+		// through.
+		if (first && !got)
+		{
+			return false;
+		}
+		first = false;
+
+		data_left += got;
+		size_left -= got;
+	}
+	return true;
+}
+
+bool hostTryReadMsg(uint32_t *ident, uint32_t *len, void **data)
+{
+	// Try to get the ident
+	if (!hostTryRead(ident, sizeof(uint32_t)))
+	{
+		// No message available
+		return false;
+	}
+
+	// Got the ident, block for the rest.
+	usb_recvbuffer_safe(kGeckoExiChan, len, sizeof(uint32_t));
+	*data = malloc(*len);
+	if (*len)
+	{
+		usb_recvbuffer_safe(kGeckoExiChan, *data, *len);
+	}
+	return true;
+}
+
 void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 {
 	usb_recvbuffer_safe(kGeckoExiChan, ident, sizeof(uint32_t));
@@ -44,11 +91,22 @@ int main(int argc, char **argv)
 {
 	printf("Startup!\n");
 
+	// Run init funcs
+	for (const InitFunctionReg *ifr = InitFunctionReg::s_pFirst; ifr; ifr = ifr->pNext)
+	{
+		ifr->func();
+	}
+
 	while (true)
 	{
+		// Wait for input
 		uint32_t request_ident, request_len;
 		void *request_data;
-		hostReadMsg(&request_ident, &request_len, &request_data);
+		while (!hostTryReadMsg(&request_ident, &request_len, &request_data))
+		{
+			// Sleep to back off of CPU time while idle
+			sleepMs(10);
+		}
 
 		if (request_ident != makeIdent("RQST"))
 		{
