@@ -3,6 +3,9 @@
 #define OC_ARRAYSIZE(x) \
 	(sizeof((x)) / sizeof((x)[0]))
 
+#define OC_HANG() \
+	while (1)
+
 #define OC_CONCAT_IMPL(s1, s2) s1##s2
 #define OC_CONCAT(s1, s2) OC_CONCAT_IMPL(s1, s2)
 #define OC_ANONYMOUS(str) OC_CONCAT(str, __LINE__)

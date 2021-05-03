@@ -12,6 +12,7 @@ SERVICE_PORT = 53273
 QUEUE_MAX_LEN = 1024
 DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
 IMAGE_PATH = "./image.dol"
+DATA_DIR = "/data"
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
 DOL_TIMEOUT = 5.0 # timeout for comms with Dolphin before abort & restart
@@ -103,24 +104,49 @@ class OrcanoFrontend:
 
 			try:
 				# Send the initial request
-				await dol_timeout(dol_write_msg(b"RQST", task["data"]))
+				await dol_timeout(dol_write_msg(b"REQQ", task["data"]))
 
 				# Respond to queries
 				while True:
 					ident, data = await dol_timeout(dol_read_msg())
-					if ident == b"RESP":
+					if ident == b"REQA":
 						result = data
 						break
-					elif ident == b"AUTH":
+					elif ident == b"USRQ":
+						if len(data) != 8:
+							raise DolphinCommunicationError("invalid auth query")
+
+						uid = struct.unpack_from(">L", data, 0)[0]
+						key = data[4:8]
+
+						exists = True
+						key_path = os.path.join(DATA_DIR, "auth_{:08x}".format(uid))
+						try:
+							with open(key_path, "rb") as f:
+								file_key = f.read()
+						except FileNotFoundError:
+							exists = False
+						
+						if exists:
+							valid = (file_key == key)
+						else:
+							# New user
+							with open(key_path, "wb") as f:
+								f.write(key)
+							valid = True
+
+						usra_data = bytearray(4)
+						struct.pack_into(">L", usra_data, 0, 1 if valid else 0)
+						await dol_timeout(dol_write_msg(b"USRA", usra_data))
+					elif ident == b"GTNQ":
 						# TODO
 						pass
-					elif ident == b"GETN":
+					elif ident == b"STNQ":
 						# TODO
 						pass
-					elif ident == b"SETN":
-						# TODO
-						pass
-					elif ident == b"EROR":
+					elif ident == b"LOGQ":
+						print(data)
+					elif ident == b"ERRQ":
 						print("DOL reported error: {}".format(data))
 						raise DolphinCommunicationError()
 					else:
