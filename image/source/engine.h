@@ -23,7 +23,7 @@ struct StackValue
 		float f;
 		int i;
 	};
-};
+} __attribute__((__packed__));
 
 class Engine
 {
@@ -38,16 +38,17 @@ private:
 	void runCommand(const char *cmd, const char *arg);
 
 	// Argument and stack handling
+	bool putStack(StackValue v);
 	bool putInt(int v);
 	bool putFloat(float v);
 
-	bool putStack(StackValue v);
-
+	bool getStack(StackValue *v);
 	bool getSInt(int *v);
 	bool getUInt(int *v);
 	bool getSFloat(float *v);
 	bool getUFloat(float *v);
 
+	bool readStack(StackValue *v);
 	bool readSInt(int *v);
 	bool readUInt(int *v);
 	bool readSFloat(float *v);
@@ -65,11 +66,20 @@ private:
 	// Commands
 	void cmd_int();
 	void cmd_float();
+	void cmd_dup();
+	void cmd_rpt();
+
 	void cmd_addi();
 	void cmd_addf();
 	void cmd_muli();
 	void cmd_mulf();
+
 	void cmd_user();
+	void cmd_getn();
+	void cmd_setn();
+	void cmd_lockn();
+
+	void cmd_dbg_fail();
 
 private:
 	StackValue m_stack[256] = {};
@@ -88,6 +98,11 @@ private:
 		StackValue m_arg_value;
 		uint16_t m_arg_ps_data[k_paired_argument_max];
 	};
+
+	// Authentication
+	bool m_user_authenticated = false;
+	int m_user_uid0 = 0;
+	int m_user_uid1 = 0;
 
 	// Error handling
 	const char *m_error_text = nullptr;

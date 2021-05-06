@@ -130,6 +130,13 @@ bool Engine::putStack(StackValue v)
 	return true;
 }
 
+bool Engine::getStack(StackValue *v)
+{
+	if (!prepareNextArg())
+		return false;
+	return readStack(v);
+}
+
 bool Engine::getSInt(int *v)
 {
 	if (!prepareNextArg())
@@ -156,6 +163,33 @@ bool Engine::getUFloat(float *v)
 	if (!prepareNextArg())
 		return false;
 	return readUFloat(v);
+}
+
+bool Engine::readStack(StackValue *v)
+{
+	if (m_arg_type == ImmediateType_Paired)
+	{
+		float f;
+		if (!readSFloat(&f))
+			return false;
+		v->type = StackValueType_Float;
+		v->f = f;
+		return true;
+	}
+
+	if (m_arg_type == ImmediateType_Int)
+	{
+		v->type = StackValueType_Int;
+		if (!readSInt(&v->i))
+			return false;
+	}
+	else if (m_arg_type == ImmediateType_Float)
+	{
+		v->type = StackValueType_Float;
+		if (!readSFloat(&v->f))
+			return false;
+	}
+	return true;
 }
 
 bool Engine::readSInt(int *v)
@@ -445,6 +479,8 @@ char *processRequest(const char *request_data)
 	// Dump stack
 	// Size should be sufficient for everything.
 	int buffer_size = e.getStackSize() * 16;
+	if (!buffer_size)
+		buffer_size = 1;
 	char *buffer = (char *)malloc(buffer_size);
 	e.dumpStack(buffer, buffer_size);
 

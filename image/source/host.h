@@ -74,7 +74,7 @@ inline bool hostTryReadMsg(uint32_t *ident, uint32_t *len, void **data)
 
 	// Got the ident, block for the rest.
 	hostRead(len, sizeof(uint32_t));
-	*data = malloc(*len);
+	*data = malloc(*len ? *len : 1);
 	if (*len)
 	{
 		hostRead(*data, *len);
@@ -86,7 +86,7 @@ inline void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 {
 	hostRead(ident, sizeof(uint32_t));
 	hostRead(len, sizeof(uint32_t));
-	*data = malloc(*len);
+	*data = malloc(*len ? *len : 1);
 	if (*len)
 	{
 		hostRead(*data, *len);

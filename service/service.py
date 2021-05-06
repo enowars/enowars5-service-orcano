@@ -3,6 +3,7 @@
 import sys
 import os
 import struct
+import datetime
 import asyncio
 
 import traceback
@@ -15,7 +16,9 @@ IMAGE_PATH = "./image.dol"
 DATA_DIR = "/data"
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
-DOL_TIMEOUT = 5.0 # timeout for comms with Dolphin before abort & restart
+DOL_TIMEOUT = 2.0 # timeout for comms with Dolphin before abort & restart
+DOL_STARTUP_TIME = 20.0 # how long to wait for Dolphin to start up in seconds
+DOL_STARTUP_INTERVAL = 0.05 # wait time between successive attempts to get to Dolphin
 
 class OrcanoFrontend:
 	async def start_dolphin(self):
@@ -45,16 +48,25 @@ class OrcanoFrontend:
 
 		# Open conn to USB Gecko port
 		connect_fail = True
-		for i in range(30):
-			try:
-				self.dol_rx, self.dol_tx = await asyncio.open_connection("127.0.0.1", 55020)
-				connect_fail = False
-				break
-			except ConnectionRefusedError:
-				pass
+		# If an instance of Dolphin just died, the old listen port might still
+		# be occupied. Dolphin will try these 10 ports as alternatives.
+		gecko_ports = range(55020, 55031)
+		tries = int(DOL_STARTUP_TIME / DOL_STARTUP_INTERVAL)
+		for i in range(tries):
+			for p in gecko_ports:
+				try:
+					self.dol_rx, self.dol_tx = await asyncio.open_connection("127.0.0.1", p)
+					print("Dolphin connected on port {}".format(p))
+					connect_fail = False
+					break
+				except ConnectionRefusedError:
+					pass
 
-			print("Connection failed, retrying ({})...".format(i))
-			await asyncio.sleep(2)
+			if not connect_fail:
+				break
+
+			print("Dolphin connection failed, retrying ({})...".format(i))
+			await asyncio.sleep(DOL_STARTUP_INTERVAL)
 
 		if connect_fail:
 			raise ConnectionRefusedError
@@ -102,6 +114,7 @@ class OrcanoFrontend:
 		while True:
 			task = await self.request_queue.get()
 
+			request_start = datetime.datetime.utcnow()
 			try:
 				# Send the initial request
 				await dol_timeout(dol_write_msg(b"REQQ", task["data"]))
@@ -113,14 +126,14 @@ class OrcanoFrontend:
 						result = data
 						break
 					elif ident == b"USRQ":
-						if len(data) != 8:
-							raise DolphinCommunicationError("invalid auth query")
+						if len(data) != 16:
+							raise DolphinCommunicationError("invalid auth query len 0x{:x}".format(len(data)))
 
-						uid = struct.unpack_from(">L", data, 0)[0]
-						key = data[4:8]
+						uid = struct.unpack_from(">Q", data, 0)[0]
+						key = data[0x8:0x10]
 
 						exists = True
-						key_path = os.path.join(DATA_DIR, "auth_{:08x}".format(uid))
+						key_path = os.path.join(DATA_DIR, "auth_{:016x}".format(uid))
 						try:
 							with open(key_path, "rb") as f:
 								file_key = f.read()
@@ -139,11 +152,69 @@ class OrcanoFrontend:
 						struct.pack_into(">L", usra_data, 0, 1 if valid else 0)
 						await dol_timeout(dol_write_msg(b"USRA", usra_data))
 					elif ident == b"GTNQ":
-						# TODO
-						pass
+						if len(data) != 0xc:
+							raise DolphinCommunicationError("invalid getn query len 0x{:x}".format(len(data)))
+
+						uid = struct.unpack_from(">Q", data, 0x0)[0]
+						idx = struct.unpack_from(">L", data, 0x8)[0]
+
+						# TODO: Should we check that this user exists here?
+						num_path = os.path.join(DATA_DIR, "num_{:016x}_{:08x}".format(uid, idx))
+						num_data = None
+						try:
+							with open(num_path, "rb") as f:
+								num_data = f.read()
+							if len(num_data) != 8:
+								print("Invalid number data read from disk for uid={:016x}, idx={:08x}".format(uid, idx))
+								num_data = None
+						except FileNotFoundError:
+							num_data = None
+
+
+						# Provide default
+						if num_data == None:
+							num_data = b"\x00" * 8
+
+						await dol_timeout(dol_write_msg(b"GTNA", num_data))
 					elif ident == b"STNQ":
-						# TODO
-						pass
+						if len(data) != 0x14:
+							raise DolphinCommunicationError("invalid setn query len 0x{:x}".format(len(data)))
+
+						# TODO: Should we check that this user exists here?
+						uid = struct.unpack_from(">Q", data, 0x0)[0]
+						idx = struct.unpack_from(">L", data, 0x8)[0]
+						num_data = data[0xc:0x14]
+						num_type = struct.unpack_from(">L", num_data, 0)[0]
+						if num_type not in [0, 1]:
+							raise DolphinCommunicationError("invalid setn number type 0x{:x}".format(num_type))
+
+						# Check for lock
+						lock_path = os.path.join(DATA_DIR, "lock_{:016x}_{:08x}".format(uid, idx))
+						try:
+							with open(lock_path, "rb") as f:
+								locked = True
+						except FileNotFoundError:
+							locked = False
+
+						# TODO: This shares code with GTNQ, maybe we can extract it.
+						if not locked:
+							num_path = os.path.join(DATA_DIR, "num_{:016x}_{:08x}".format(uid, idx))
+							with open(num_path, "wb") as f:
+								f.write(num_data)
+					elif ident == b"LKNQ":
+						if len(data) != 0xc:
+							raise DolphinCommunicationError("invalid lockn query len 0x{:x}".format(len(data)))
+
+						# TODO: Should we check that this user exists here?
+						uid = struct.unpack_from(">Q", data, 0x0)[0]
+						idx = struct.unpack_from(">L", data, 0x8)[0]
+
+						# TODO: This shares code with STNQ
+						lock_path = os.path.join(DATA_DIR, "lock_{:016x}_{:08x}".format(uid, idx))
+
+						# Create the lock file if it didn't exist already
+						with open(lock_path, "wb") as f:
+							pass
 					elif ident == b"LOGQ":
 						print(data)
 					elif ident == b"ERRQ":
@@ -171,6 +242,12 @@ class OrcanoFrontend:
 
 				# Fail the request
 				result = b"internal error\n"
+
+			# For performance estimation
+			# TODO: Should probably get rid of this overhead for final
+			request_end = datetime.datetime.utcnow()
+			request_duration = request_end - request_start
+			print("Request took {}us".format(request_duration / datetime.timedelta(microseconds=1)))
 
 			# Return the result
 			task["result_fut"].set_result(result)
