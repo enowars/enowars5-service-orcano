@@ -8,6 +8,8 @@ const Engine::CommandInfo Engine::s_commands[] = {
 	{ "float", &Engine::cmd_float },
 	{ "dup", &Engine::cmd_dup },
 	{ "rpt", &Engine::cmd_rpt },
+	{ "del", &Engine::cmd_del },
+	{ "drop", &Engine::cmd_drop },
 
 	{ "addi", &Engine::cmd_addi },
 	{ "addf", &Engine::cmd_addf },
@@ -18,7 +20,9 @@ const Engine::CommandInfo Engine::s_commands[] = {
 	{ "getn", &Engine::cmd_getn },
 	{ "setn", &Engine::cmd_setn },
 	{ "lockn", &Engine::cmd_lockn },
+
 	{ "dbg_fail", &Engine::cmd_dbg_fail },
+
 	{ nullptr, nullptr }
 };
 
@@ -53,6 +57,23 @@ void Engine::cmd_rpt()
 	for (int i = 0; i < count; ++i)
 	{
 		putStack(sv);
+	}
+}
+
+void Engine::cmd_del()
+{
+	StackValue sv;
+	getStack(&sv);
+}
+
+void Engine::cmd_drop()
+{
+	int count;
+	getUInt(&count);
+	for (int i = 0; i < count; ++i)
+	{
+		StackValue sv;
+		getStack(&sv);
 	}
 }
 

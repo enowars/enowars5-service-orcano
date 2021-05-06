@@ -68,6 +68,8 @@ private:
 	void cmd_float();
 	void cmd_dup();
 	void cmd_rpt();
+	void cmd_del();
+	void cmd_drop();
 
 	void cmd_addi();
 	void cmd_addf();
