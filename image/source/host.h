@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstdio>
 
 // libogc *needs* this to have some of the above includes, so has to be at the
 // bottom.
@@ -93,11 +94,21 @@ inline void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 	}
 }
 
-#define OC_LOG(fmt, ...) \
+#define OC_HOST_TEXTMSG(ident, fmt, ...) \
 	do \
 	{ \
-		char buffer[256]; \
-		snprintf(buffer, OC_ARRAYSIZE(buffer), fmt, __VA_ARGS__); \
-		buffer[OC_ARRAYSIZE(buffer) - 1] = '\0'; \
-		hostWriteMsg(makeIdent("LOGQ"), strlen(buffer), buffer); \
+		char oc_host_textmsg_buf[256]; \
+		snprintf(oc_host_textmsg_buf, OC_ARRAYSIZE(oc_host_textmsg_buf), fmt __VA_OPT__(,) __VA_ARGS__); \
+		oc_host_textmsg_buf[OC_ARRAYSIZE(oc_host_textmsg_buf) - 1] = '\0'; \
+		hostWriteMsg(makeIdent(ident), strlen(oc_host_textmsg_buf), oc_host_textmsg_buf); \
 	} while(false)
+
+#define OC_ERR(fmt, ...) \
+	OC_HOST_TEXTMSG("ERRQ", fmt, __VA_ARGS__)
+#if 1
+#define OC_LOG(fmt, ...) \
+	OC_HOST_TEXTMSG("LOGQ", fmt, __VA_ARGS__)
+#else
+#define OC_LOG(fmt, ...) \
+	((void)0)
+#endif

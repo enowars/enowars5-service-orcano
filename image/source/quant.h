@@ -23,7 +23,7 @@ enum
 	QuantType_Int16 = 7,
 };
 
-void quant_set_scale(int scale)
+inline void quant_set_scale(int scale)
 {
 	constexpr uint32_t scale_bits = 6;
 	constexpr uint32_t scale_mask = (1 << scale_bits) - 1;
@@ -35,14 +35,14 @@ void quant_set_scale(int scale)
 	set_gqr2(gqr);
 }
 
-void quant_set_type(int type)
+inline void quant_set_type(int type)
 {
 	constexpr uint32_t type_bits = 3;
-	constexpr uint32_t type_mask = (1 << type_bits);
+	constexpr uint32_t type_mask = (1 << type_bits) - 1;
 	type &= type_mask;
 
 	uint32_t gqr = get_gqr2();
 	gqr &= ~((type_mask << 16) | (type_mask << 0));
-	gqr |= ((type << 8) | (type << 0));
+	gqr |= ((type << 16) | (type << 0));
 	set_gqr2(gqr);
 }

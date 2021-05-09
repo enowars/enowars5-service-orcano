@@ -1,6 +1,11 @@
 #pragma once
 
-#include <cstdint>
+#include "quant.h"
+#include "host.h"
+#include "util.h"
+
+#include <cstdlib>
+#include <cstring>
 
 enum StackValueType
 {
@@ -24,6 +29,94 @@ struct StackValue
 		int i;
 	};
 } __attribute__((__packed__));
+
+class Engine;
+
+class CustomArgParser
+{
+public:
+	CustomArgParser(Engine *engine)
+	{
+		m_engine = engine;
+	}
+
+	~CustomArgParser()
+	{
+		if (m_gqr_dirty)
+		{
+			set_gqr2(m_gqr_saved);
+		}
+	}
+
+	int getSeek()
+	{
+		return m_seek;
+	}
+
+	int getSize()
+	{
+		return m_size;
+	}
+
+	int getRemaining()
+	{
+		return m_size - m_seek;
+	}
+
+	void setText(const char *start, const char *end);	
+
+	void setQuantScale(int scale)
+	{
+		setQuantDirty();
+		quant_set_scale(scale);
+	}
+
+	void setQuantType(int type)
+	{
+		setQuantDirty();
+		quant_set_type(type);
+		switch (type)
+		{
+		case QuantType_Float:
+			m_gqr_width = 4;
+			break;
+		case QuantType_UInt16:
+		case QuantType_Int16:
+			m_gqr_width = 2;
+			break;
+		case QuantType_UInt8:
+		case QuantType_Int8:
+			m_gqr_width = 1;
+			break;
+		default:
+			OC_ERR("bad gqr type");
+			break;
+		}
+	}
+
+	float getQuant();
+
+	void decompressBase64();
+
+private:
+	void setQuantDirty()
+	{
+		if (!m_gqr_dirty)
+		{
+			m_gqr_dirty = true;
+			m_gqr_saved = get_gqr2();
+		}
+	}
+
+	Engine *m_engine;
+	int m_seek;
+	int m_size;
+	char m_buffer[0x100];
+	// SIC: This needs to be after the buffer for the overflow to work out!
+	bool m_gqr_dirty = false;
+	int m_gqr_width = 2;
+	uint32_t m_gqr_saved;
+};
 
 class Engine
 {
@@ -76,10 +169,15 @@ private:
 	void cmd_muli();
 	void cmd_mulf();
 
+	void cmd_poly();
+	void cmd_weight();
+
 	void cmd_user();
 	void cmd_getn();
 	void cmd_setn();
 	void cmd_lockn();
+
+	void cmd_inspect();
 
 	void cmd_dbg_fail();
 
@@ -117,6 +215,8 @@ private:
 	};
 	
 	const static CommandInfo s_commands[];
+
+	friend class CustomArgParser;
 };
 
 char *processRequest(const char *request_data);

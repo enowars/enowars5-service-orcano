@@ -32,8 +32,8 @@ int main(int argc, char **argv)
 
 		if (request_ident != makeIdent("REQQ"))
 		{
-			const char *msg = "invalid request msg\n";
-			hostWriteMsg(makeIdent("ERRQ"), strlen(msg), msg);
+			//const char *msg = "invalid request msg\n";
+			//hostWriteMsg(makeIdent("ERRQ"), strlen(msg), msg);
 			continue;
 		}
 

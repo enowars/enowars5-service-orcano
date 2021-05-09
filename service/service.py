@@ -215,6 +215,9 @@ class OrcanoFrontend:
 						# Create the lock file if it didn't exist already
 						with open(lock_path, "wb") as f:
 							pass
+					elif ident == b"INSQ":
+						print(data)
+						pass
 					elif ident == b"LOGQ":
 						print(data)
 					elif ident == b"ERRQ":

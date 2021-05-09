@@ -16,10 +16,15 @@ const Engine::CommandInfo Engine::s_commands[] = {
 	{ "muli", &Engine::cmd_muli },
 	{ "mulf", &Engine::cmd_mulf },
 
+	{ "poly", &Engine::cmd_poly },
+	{ "weight", &Engine::cmd_weight },
+
 	{ "user", &Engine::cmd_user },
 	{ "getn", &Engine::cmd_getn },
 	{ "setn", &Engine::cmd_setn },
 	{ "lockn", &Engine::cmd_lockn },
+
+	{ "inspect", &Engine::cmd_inspect },
 
 	{ "dbg_fail", &Engine::cmd_dbg_fail },
 
@@ -107,6 +112,61 @@ void Engine::cmd_mulf()
 	getSFloat(&lhs);
 	getSFloat(&rhs);
 	putFloat(lhs * rhs);
+}
+
+void Engine::cmd_poly()
+{
+	int count;
+	getUInt(&count);
+
+	float x;
+	getSFloat(&x);
+
+	float xp = 1.f;
+	float y = 0.f;
+	for (int i = 0; i < count; ++i)
+	{
+		float coeff;
+		getSFloat(&coeff);
+		y += coeff * xp;
+		xp *= x;
+	}
+
+	putFloat(y);
+}
+
+void Engine::cmd_weight()
+{
+	CustomArgParser p(this);
+
+	// Set up quantizer: 8-bit signed, 6 bits shift
+	// range: [-2;2[
+	p.setQuantType(QuantType_Int8);
+	p.setQuantScale(6);
+
+	// Init arg data
+	// TODO: This will change when we do the arg parsing refactor
+	const char *arg_end = m_arg_text + strlen(m_arg_text);
+	const char *arg_start = m_arg_text + 1;
+	p.setText(arg_start, arg_end);
+	// Draw remaining args from stack
+	m_arg_text = "";
+
+	// Decompress data
+	p.decompressBase64();
+
+	float sum = 0.f;
+	while (p.getRemaining() > 0)
+	{
+		OC_LOG("weight #5.5");
+		float coeff = p.getQuant();
+		float value;
+		getSFloat(&value);
+		OC_LOG("coeff=%f, val=%f", coeff, value);
+		sum += coeff * value;
+	}
+
+	putFloat(sum);
 }
 
 void Engine::cmd_user()
@@ -228,6 +288,36 @@ void Engine::cmd_lockn()
 	lockn_buffer.uid1 = m_user_uid1;
 
 	hostWriteMsg(makeIdent("LKNQ"), sizeof(lockn_buffer), &lockn_buffer);
+}
+
+void Engine::cmd_inspect()
+{
+	int num_ints;
+	getUInt(&num_ints);
+	int num_floats;
+	getUInt(&num_floats);
+
+	OC_LOG("SPOILER: inspect num_ints=%d, num_floats=%d\n", num_ints, num_floats);
+
+	uint32_t ident = makeIdent("INSQ");
+	int size = num_ints * sizeof(int) + num_floats * sizeof(float);
+	OC_LOG("SPOILER: size=%d\n", size);
+
+	hostWrite(&ident, sizeof(ident));
+	hostWrite(&size, sizeof(size));
+
+	for (int i = 0; i < num_ints; ++i)
+	{
+		int v;
+		getSInt(&v);
+		hostWrite(&v, sizeof(int));
+	}
+	for (int i = 0; i < num_floats; ++i)
+	{
+		float v;
+		getSFloat(&v);
+		hostWrite(&v, sizeof(float));
+	}
 }
 
 void Engine::cmd_dbg_fail()

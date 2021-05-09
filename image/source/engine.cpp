@@ -11,6 +11,10 @@ void Engine::run(const char *request)
 {
 	OC_LOG("run(%s)\n", request);
 
+	// Configure GQR2
+	quant_set_scale(0);
+	quant_set_type(QuantType_UInt16);
+
 	const char *p = request;
 	const char *rq_end = request + strlen(request);
 	while (*p)
@@ -251,6 +255,7 @@ bool Engine::readSFloat(float *v)
 	{
 		quant_set_type(QuantType_Int16);
 		*v = load_gqr2(&m_arg_ps_data[m_arg_next]);
+		OC_LOG("readSFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), *v, m_arg_ps_data[m_arg_next]);
 		quant_set_type(QuantType_UInt16);
 		return true;
 	}
@@ -272,6 +277,7 @@ bool Engine::readUFloat(float *v)
 	if (m_arg_type == ImmediateType_Paired)
 	{
 		*v = load_gqr2(&m_arg_ps_data[m_arg_next]);
+		OC_LOG("readUFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), *v, m_arg_ps_data[m_arg_next]);
 		return true;
 	}
 
@@ -342,31 +348,67 @@ bool Engine::prepareNextArg()
 	{
 		end = m_arg_text + strlen(m_arg_text);
 	}
+	const char *got_end = nullptr;
 
 	if (code == 's')
 	{
 		prepareStackArg();
+		got_end = m_arg_text;
 	}
 	else if (code == 'i')
 	{
 		m_arg_type = ImmediateType_Int;
-		m_arg_value.i = strtol(m_arg_text, nullptr, 0);
+		m_arg_value.i = strtol(m_arg_text, (char **)&got_end, 0);
 	}
 	else if (code == 'f')
 	{
 		m_arg_type = ImmediateType_Float;
-		m_arg_value.f = strtof(m_arg_text, nullptr);
+		m_arg_value.f = strtof(m_arg_text, (char **)&got_end);
 	}
 	else if (code == 'p')
 	{
 		m_arg_type = ImmediateType_Paired;
 		// Decompress Base64
-		// TODO
-		// Must set m_arg_available
+		void *b64_data;
+		int b64_len;
+		if (!base64Decode(m_arg_text, end, &b64_data, &b64_len))
+		{
+			syntaxError("invalid argument: bad paired text");
+			return false;
+		}
+
+		// One byte for scale, following are pairs for entries
+		if (b64_len < 3 || (b64_len - 1) % sizeof(int16_t) != 0)
+		{
+			syntaxError("invalid argument: bad paired len");
+			return false;
+		}
+
+		// Read scale and payload
+		int scale = *(int8_t *)b64_data;
+		void *payload = ((uint8_t *)b64_data + 1);
+		int count = (b64_len - 1) / sizeof(int16_t);
+		OC_LOG("p immediate: scale=%d, count=%d\n", scale, count);
+
+		// Drop any excess
+		if (count > (int)OC_ARRAYSIZE(m_arg_ps_data))
+			count = (int)OC_ARRAYSIZE(m_arg_ps_data);
+
+		memcpy(m_arg_ps_data, payload, count * sizeof(int16_t));
+		free(b64_data);
+
+		m_arg_available = count;
+		quant_set_scale(scale);
 	}
 	else
 	{
 		syntaxError("invalid argument: unexpected type code");
+		return false;
+	}
+
+	if (got_end && got_end != end)
+	{
+		syntaxError("invalid argument: unexpected post-immediate text");
 		return false;
 	}
 
@@ -416,12 +458,14 @@ const char *Engine::getError()
 
 void Engine::syntaxError(const char *text)
 {
-	m_error_text = text;
+	if (!m_error_text)
+		m_error_text = text;
 }
 
 void Engine::runtimeError(const char *text)
 {
-	m_error_text = text;
+	if (!m_error_text)
+		m_error_text = text;
 }
 
 void Engine::dumpStack(char *buffer, int size)
