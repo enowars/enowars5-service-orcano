@@ -4,9 +4,13 @@
 #include <cstdlib>
 #include <cstdio>
 
+#if OC_OGC_GECKO
 // libogc *needs* this to have some of the above includes, so has to be at the
 // bottom.
 #include <ogc/usbgecko.h>
+#else
+#include "ug.h"
+#endif
 
 constexpr uint32_t makeIdent(const char *text)
 {
@@ -21,12 +25,20 @@ constexpr int kGeckoExiChan = 1;
 
 inline void hostWrite(const void *data, int size)
 {
+#if OC_OGC_GECKO
 	usb_sendbuffer_safe(kGeckoExiChan, data, size);
+#else
+	ugSendBlocking(kGeckoExiChan, data, size);
+#endif
 }
 
 inline void hostRead(void *data, int size)
 {
+#if OC_OGC_GECKO
 	usb_recvbuffer_safe(kGeckoExiChan, data, size);
+#else
+	ugRecvBlocking(kGeckoExiChan, data, size);
+#endif
 }
 
 // Read all or nothing in one shot.
@@ -38,7 +50,11 @@ inline bool hostTryRead(void *data, int size)
 	bool first = true;
 	while (size_left > 0)
 	{
+#if OC_OGC_GECKO
 		int got = usb_recvbuffer(kGeckoExiChan, data_left, size_left);
+#else
+		int got = ugRecv(kGeckoExiChan, data_left, size_left);
+#endif
 
 		// Abort if this is the first run through, otherwise we gotta see it
 		// through.

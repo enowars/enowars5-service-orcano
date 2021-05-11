@@ -1,0 +1,127 @@
+#include <ogc/exi.h>
+
+#include "ug.h"
+
+bool ugProbe(int chan)
+{
+	if (!EXI_Probe(chan))
+		return false;
+
+	// USB Gecko doesn't use normal IDs; we check that the usual ID command
+	// just returns zeros to try and avoid sending random commands to e.g.
+	// memory cards.
+	uint32_t id;
+	if (!EXI_GetID(chan, 0, &id))
+		return false;
+	if (id != 0)
+		return false;
+
+	if (!EXI_Lock(chan, 0, nullptr))
+		return false;
+	if (!EXI_Select(chan, 0, 5))
+	{
+		EXI_Unlock(chan);
+		return false;
+	}
+
+	uint16_t cmd = 0x9000;
+	if (!EXI_Imm(chan, &cmd, sizeof(uint16_t), 2, nullptr) || 
+	    !EXI_Sync(chan))
+	{
+		EXI_Deselect(chan);
+		EXI_Unlock(chan);
+		return false;
+	}
+
+	EXI_Deselect(chan);
+	EXI_Unlock(chan);
+	return (cmd & 0x0fff) == 0x0470;
+}
+
+static int ugTransfer(int chan, void *data, int len, bool write)
+{
+	// Lock device
+	if (!EXI_Lock(chan, 0, nullptr))
+	{
+		return -1;
+	}
+
+	// Set speed
+	if (!EXI_Select(chan, 0, 5))
+	{
+		EXI_Unlock(chan);
+		return -1;
+	}
+
+	bool fail = false;
+
+	uint8_t *p = (uint8_t *)data;
+
+	int xfer_len = 0;
+	for (; xfer_len < len; ++xfer_len)
+	{
+		uint16_t cmd;
+		if (write)
+			cmd = 0xb000 | p[xfer_len] << 4;
+		else
+			cmd = 0xa000;
+
+		if (!EXI_Imm(chan, &cmd, sizeof(uint16_t), 2, nullptr) || 
+		    !EXI_Sync(chan))
+		{
+			fail = true;
+			break;
+		}
+
+		// Exit early if buffers are full
+		uint16_t success_mask = write ? 0x0400 : 0x0800;
+		if (!(cmd & success_mask))
+		{
+			break;
+		}
+
+		// Read out response byte if reading
+		if (!write)
+			p[xfer_len] = cmd & 0xff;
+	}
+
+	EXI_Deselect(chan);
+	EXI_Unlock(chan);
+
+	return fail ? -1 : xfer_len;
+}
+
+int ugTransferBlocking(int chan, void *data, int len, bool write)
+{
+	uint8_t *data_left = (uint8_t *)data;
+	int size_left = len;
+	while (size_left > 0)
+	{
+		int got = ugTransfer(chan, data_left, size_left, write);
+		if (got < 0)
+			return -1;
+		data_left += got;
+		size_left -= got;
+	}
+	return 0;
+}
+
+int ugSend(int chan, const void *data, int len)
+{
+	return ugTransfer(chan, (void *)data, len, true);
+}
+
+int ugRecv(int chan, void *data, int len)
+{
+	return ugTransfer(chan, data, len, false);
+}
+
+int ugSendBlocking(int chan, const void *data, int len)
+{
+	return ugTransferBlocking(chan, (void *)data, len, true);
+}
+
+int ugRecvBlocking(int chan, void *data, int len)
+{
+	return ugTransferBlocking(chan, data, len, false);
+}
