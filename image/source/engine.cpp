@@ -473,18 +473,22 @@ void Engine::dumpStack(char *buffer, int size)
 	int left = size;
 	buffer[0] = '\0';
 
+	const char *prefix = "out: ";
+	strncat(buffer, prefix, left);
+	left -= strlen(prefix);
+
 	char item_buffer[16];
 	for (int i = m_stack_size; i > 0; --i)
 	{
 		StackValue sv = m_stack[i - 1];
 		if (sv.type == StackValueType_Int)
 		{
-			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "%d\n", sv.i);
+			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "i%d ", sv.i);
 			item_buffer[OC_ARRAYSIZE(item_buffer) - 1] = '\0';
 		}
 		else if (sv.type == StackValueType_Float)
 		{
-			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "%.7f\n", sv.f);
+			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "f%.7f ", sv.f);
 			item_buffer[OC_ARRAYSIZE(item_buffer) - 1] = '\0';
 		}
 		else
@@ -514,17 +518,17 @@ char *processRequest(const char *request_data)
 	const char *err_text = e.getError();
 	if (err_text)
 	{
-		char *out = (char *)malloc(strlen(err_text) + 2);
-		strcpy(out, err_text);
-		strcat(out, "\n");
+		const char *err_prefix = "error: ";
+		char *out = (char *)malloc(strlen(err_prefix) + strlen(err_text) + 1);
+		out[0] = '\0';
+		strcat(out, err_prefix);
+		strcat(out, err_text);
 		return out;
 	}
 
 	// Dump stack
 	// Size should be sufficient for everything.
-	int buffer_size = e.getStackSize() * 16;
-	if (!buffer_size)
-		buffer_size = 1;
+	int buffer_size = 16 + e.getStackSize() * 16;
 	char *buffer = (char *)malloc(buffer_size);
 	e.dumpStack(buffer, buffer_size);
 

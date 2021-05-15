@@ -120,10 +120,12 @@ class OrcanoFrontend:
 				await dol_timeout(dol_write_msg(b"REQQ", task["data"]))
 
 				# Respond to queries
+				result = bytearray()
 				while True:
 					ident, data = await dol_timeout(dol_read_msg())
 					if ident == b"REQA":
-						result = data
+						result += data
+						result += b"\n"
 						break
 					elif ident == b"USRQ":
 						if len(data) != 16:
@@ -217,7 +219,6 @@ class OrcanoFrontend:
 							pass
 					elif ident == b"INSQ":
 						print(data)
-						pass
 					elif ident == b"LOGQ":
 						print(data)
 					elif ident == b"ERRQ":
@@ -244,7 +245,7 @@ class OrcanoFrontend:
 				print("Restart complete.")
 
 				# Fail the request
-				result = b"internal error\n"
+				result = b"error: internal\n"
 
 			# For performance estimation
 			# TODO: Should probably get rid of this overhead for final
