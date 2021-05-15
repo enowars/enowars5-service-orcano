@@ -1,0 +1,23 @@
+version: '3'
+services:
+  # Give your container proper names!
+  orcano-checker:
+    build: .
+    # The checker runs a HTTP interfaces, so we need to map port 3031 to the outside (port 8000).
+    ports:
+      - 8010:3031
+    environment:
+     - MONGO_ENABLED=1
+     - MONGO_HOST=orcano-mongo
+     - MONGO_PORT=27017
+     - MONGO_USER=orcano_checker
+     - MONGO_PASSWORD=orcano_checker
+
+  # The python checkerlib requires a mongo db!
+  orcano-mongo:
+    image: mongo
+    volumes:
+      - ./data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: orcano_checker
+      MONGO_INITDB_ROOT_PASSWORD: orcano_checker
