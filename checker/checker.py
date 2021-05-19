@@ -213,6 +213,7 @@ class OrcanoChecker(BaseChecker):
 			conn = self.begin_conn()
 			self.debug("Making request")
 			result = self.make_request(conn, cmds)
+			self.end_conn(conn)
 			self.debug("Got: {}".format(result))
 			if not result["ok"]:
 				raise BrokenServiceException("putflag request error")
@@ -236,6 +237,7 @@ class OrcanoChecker(BaseChecker):
 
 			conn = self.begin_conn()
 			result = self.make_request(conn, cmds)
+			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("getflag request error")
 
