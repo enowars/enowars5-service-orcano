@@ -46,11 +46,16 @@ WORKDIR dolphin
 # https://github.com/dolphin-emu/dolphin/commit/18174d3ed64f117baa755ec961345ee362a7ccc3
 RUN git checkout 18174d3ed64f117baa755ec961345ee362a7ccc3
 
+# Apply patches
+RUN apt-get install -y --no-install-recommends patch
+COPY dolphin.patch .
+RUN patch -p 2 -i dolphin.patch
+
 # Compile
 RUN mkdir build
 WORKDIR build
 RUN cmake -DCMAKE_INSTALL_PREFIX=/dolphin -DENABLE_QT=OFF -DENABLE_EVDEV=OFF ..
-RUN make
+RUN make -j6
 RUN make install
 
 # Cleanup (removes ~500M so worth it)

@@ -1,0 +1,267 @@
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/CMakeLists.txt ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/CMakeLists.txt
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/CMakeLists.txt	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/CMakeLists.txt	2021-05-19 23:59:47.718279400 +0200
+@@ -723,8 +723,10 @@
+   set(LIBUSB_FOUND true)
+ endif()
+ 
++# LinusS: Use static version of SFML so we can patch it
++set(DISABLE_SFML TRUE)
+ set(SFML_REQD_VERSION 2.1)
+-if(NOT APPLE)
++if(NOT APPLE AND NOT DISABLE_SFML)
+   find_package(SFML ${SFML_REQD_VERSION} COMPONENTS network system)
+ endif()
+ if(SFML_FOUND)
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Externals/SFML/src/SFML/Network/Socket.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Externals/SFML/src/SFML/Network/Socket.cpp
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Externals/SFML/src/SFML/Network/Socket.cpp	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Externals/SFML/src/SFML/Network/Socket.cpp	2021-05-18 02:00:32.077794500 +0200
+@@ -106,6 +106,10 @@
+         // Set the current blocking state
+         setBlocking(m_isBlocking);
+ 
++        // LinusS: Allow address reuse
++        int parm = 1;
++        setsockopt(m_socket, SOL_SOCKET, SO_REUSEADDR, &parm, sizeof(parm));
++
+         if (m_type == Tcp)
+         {
+             // Disable the Nagle algorithm (i.e. removes buffering of TCP packets)
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-05-20 00:03:51.294337200 +0200
+@@ -19,6 +19,9 @@
+ #include "Common/Thread.h"
+ #include "Core/Core.h"
+ 
++// LinusS: For CopyToEmu and GetPointer
++#include "Core/HW/Memmap.h"
++
+ namespace ExpansionInterface
+ {
+ u16 GeckoSockServer::server_port;
+@@ -82,7 +85,7 @@
+       new_client = std::make_unique<sf::TcpSocket>();
+     }
+ 
+-    Common::SleepCurrentThread(1);
++    Common::SleepCurrentThread(10);
+   }
+ }
+ 
+@@ -124,7 +127,8 @@
+   {
+     bool did_nothing = true;
+ 
+-    {
++    // LinusS: TODO: We can just get rid of this entirely.
++    /*{
+       std::lock_guard lk(transfer_lock);
+ 
+       // what's an ideal buffer size?
+@@ -148,13 +152,25 @@
+         std::vector<char> packet(send_fifo.begin(), send_fifo.end());
+         send_fifo.clear();
+ 
+-        if (client->send(&packet[0], packet.size()) == sf::Socket::Disconnected)
+-          client_running.Clear();
++        // LinusS: Fix partial send
++        char *data_left = packet.data();
++        int size_left = packet.size();
++        while (size_left > 0)
++        {
++          size_t actual = 0;
++          if (client->send(data_left, size_left, actual) == sf::Socket::Disconnected)
++          {
++            client_running.Clear();
++            break;
++          }
++          size_left -= actual;
++          data_left += actual;
++        }
+       }
+-    }  // unlock transfer
++    }  // unlock transfer*/
+ 
+     if (did_nothing)
+-      Common::YieldCPU();
++      Common::SleepCurrentThread(100); // LinusS: Switched from yield
+   }
+ 
+   client->disconnect();
+@@ -186,6 +202,7 @@
+   // |= 0x08000000 if successful
+   case CMD_RECV:
+   {
++    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: Deprecated recv!");
+     std::lock_guard lk(transfer_lock);
+     if (!recv_fifo.empty())
+     {
+@@ -220,9 +237,131 @@
+     break;
+   }
+ 
++  // LinusS: Add flush command
++  case CMD_FLUSH:
++  {
++    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: CMD_FLUSH");
++    EnsureClient();
++
++    std::lock_guard lk(transfer_lock);
++    std::vector<u8> send_data(send_fifo.begin(), send_fifo.end());
++    send_fifo.clear();
++
++    u8 *data_left = send_data.data();
++    int size_left = send_data.size();
++    while (size_left > 0)
++    {
++      size_t got;
++      if (client->send(data_left, size_left, got) == sf::Socket::Disconnected)
++        break;
++
++      data_left += got;
++      size_left -= got;
++    }
++
++    if (size_left)
++    {
++      INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: CMD_FLUSH failure");
++      // TODO fatal?
++    }
++
++    break;
++  }
++
+   default:
+     ERROR_LOG_FMT(EXPANSIONINTERFACE, "Unknown USBGecko command {:x}", _uData);
+     break;
+   }
+ }
++
++// LinusS: DMA support
++void CEXIGecko::DMARead(u32 addr, u32 len)
++{
++  // Wait for startup
++  INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead Addr=0x{:08x} Len=0x{:x}", addr, len);
++  EnsureClient();
++
++  std::lock_guard lk(transfer_lock);
++
++  // Draw from queue
++  u32 addr_left = addr;
++  int size_left = len;
++  while (size_left > 0)
++  {
++    if (!recv_fifo.empty())
++    {
++      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from queue");
++
++      // Read from queue buffer
++      size_t got = recv_fifo.size();
++      if (size_left < got)
++        got = size_left;
++
++      std::vector<u8> queue_data(recv_fifo.begin(), recv_fifo.begin() + got);
++      recv_fifo.erase(recv_fifo.begin(), recv_fifo.begin() + got);
++
++      Memory::CopyToEmu(addr_left, queue_data.data(), got);
++      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead queued got 0x{:x}", got);
++
++      addr_left += got;
++      size_left -= got;
++    }
++    else
++    {
++      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from net");
++
++      // Read from network
++      int max_get = 0x800;
++      std::vector<u8> net_data(max_get);
++
++      // Switch to blocking to minimize CPU overhead
++      bool was_blocking = client->isBlocking();
++      client->setBlocking(true);
++      size_t got = 0;
++      bool fail = (client->receive(net_data.data(), max_get, got) == sf::Socket::Disconnected);
++      client->setBlocking(was_blocking);
++      if (fail)
++        break;
++
++      recv_fifo.insert(recv_fifo.end(), net_data.begin(), net_data.begin() + got);
++      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead network got 0x{:x}", got);
++    }
++  }
++
++  if (size_left)
++  {
++    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead failure");
++    // TODO fatal?
++  }
++}
++
++void CEXIGecko::DMAWrite(u32 addr, u32 len)
++{
++  INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite Addr=0x{:08x} Len=0x{:x}", addr, len);
++  EnsureClient();
++
++  std::lock_guard lk(transfer_lock);
++
++  u8 *mem_data = Memory::GetPointer(addr);
++  if (!mem_data)
++  {
++    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite failed to resolve address");
++    // TODO fatal?
++    return;
++  }
++
++  // Calling send() immediately on every write turns out to have a significant
++  // performance impact, so we buffer and then explicitly flush instead.
++  send_fifo.insert(send_fifo.end(), mem_data, mem_data + len);
++}
++
++void CEXIGecko::EnsureClient()
++{
++  while (!client || client->getLocalPort() == 0)
++  {
++    GetAvailableSock();
++    Common::SleepCurrentThread(1);
++  }
++}
++
+ }  // namespace ExpansionInterface
+Only in ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI: EXI_DeviceGecko.cpp.bak
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h	2021-05-18 01:06:33.513050300 +0200
+@@ -33,7 +33,7 @@
+   std::deque<u8> send_fifo;
+   std::deque<u8> recv_fifo;
+ 
+-private:
++protected: // LinusS: For access to client_running to be able to abort
+   static int client_count;
+   Common::Flag client_running;
+ 
+@@ -54,6 +54,12 @@
+   bool IsPresent() const override { return true; }
+   void ImmReadWrite(u32& _uData, u32 _uSize) override;
+ 
++  // LinusS: Add DMA support for better perf
++  void DMARead(u32 addr, u32 size) override;
++  void DMAWrite(u32 addr, u32 size) override;
++
++  void EnsureClient();
++
+ private:
+   enum
+   {
+@@ -64,6 +70,9 @@
+     CMD_SEND = 0xb,
+     CMD_CHK_TX = 0xc,
+     CMD_CHK_RX = 0xd,
++
++    // LinusS: Add flush command for better send perf
++    CMD_FLUSH = 0xe,
+   };
+ 
+   static const u32 ident = 0x04700000;

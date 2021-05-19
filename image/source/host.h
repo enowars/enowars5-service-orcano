@@ -41,6 +41,13 @@ inline void hostRead(void *data, int size)
 #endif
 }
 
+inline void hostFlush()
+{
+#if !OC_OGC_GECKO
+	ugFlush(kGeckoExiChan);
+#endif
+}
+
 // Read all or nothing in one shot.
 inline bool hostTryRead(void *data, int size)
 {
@@ -78,6 +85,7 @@ inline void hostWriteMsg(uint32_t ident, uint32_t len, const void *data)
 	{
 		hostWrite(data, len);
 	}
+	hostFlush();
 }
 
 inline bool hostTryReadMsg(uint32_t *ident, uint32_t *len, void **data)
@@ -121,7 +129,7 @@ inline void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 
 #define OC_ERR(fmt, ...) \
 	OC_HOST_TEXTMSG("ERRQ", fmt, __VA_ARGS__)
-#if 1
+#if 0
 #define OC_LOG(fmt, ...) \
 	OC_HOST_TEXTMSG("LOGQ", fmt, __VA_ARGS__)
 #else
