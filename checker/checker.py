@@ -26,7 +26,7 @@ class OrcanoChecker(BaseChecker):
 	port = 53273
 
 	# Helpers
-	def make_cmd(self, cmd, args):
+	def make_cmd(self, cmd, args = []):
 		# TODO: Arg layout randomization:
 		# push on stack then consume implicitly or with s, use paired, etc.
 		text = cmd
@@ -77,7 +77,7 @@ class OrcanoChecker(BaseChecker):
 		return uid0, uid1, key0, key1
 	def save_creds(self, creds):
 		uid0, uid1, key0, key1 = creds
-		self.chain_db = {
+		return {
 			"uid0": uid0,
 			"uid1": uid1,
 			"key0": key0,
@@ -186,11 +186,30 @@ class OrcanoChecker(BaseChecker):
 		result = {}
 		result["ok"] = success
 		if success:
+			#self.debug("OK: Got {}".format(out_data))
 			result["out"] = out_data
 		else:
+			#self.debug("ERR: Got \"{}\"".format(out_data))
 			result["err"] = err_data
 		#result["extra"] = mid # TODO
+
 		return result
+
+	def put_data(self, conn, creds, nums):
+		cmds = []
+		cmds += [self.make_user(creds)]
+		# TODO: We can shuffle these
+		cmds += [self.make_cmd("setn", [i, n]) for i, n in enumerate(nums)]
+		cmds += [self.make_cmd("lockn", [i]) for i, n in enumerate(nums)]
+		return self.make_request(conn, cmds)
+
+	def get_data(self, conn, creds, count):
+		cmds = []
+		cmds += [self.make_user(creds)]
+		cmds += [self.make_cmd("del")]
+		# TODO: We can shuffle these
+		cmds += [self.make_cmd("getn", [i]) for i in reversed(range(count))]
+		return self.make_request(conn, cmds)
 
 	# Entrypoints
 	def putflag(self):
@@ -201,20 +220,11 @@ class OrcanoChecker(BaseChecker):
 
 			self.debug("Generating creds")
 			creds = self.gen_creds()
-			self.save_creds(creds)
+			self.chain_db = self.save_creds(creds)
 
-			cmds = []
-			cmds += [self.make_user(creds)]
-			# TODO: We can shuffle these
-			cmds += [self.make_cmd("setn", [i, n]) for i, n in enumerate(nums)]
-			cmds += [self.make_cmd("lockn", [i]) for i, n in enumerate(nums)]
-			
-			self.debug("Connecting")
 			conn = self.begin_conn()
-			self.debug("Making request")
-			result = self.make_request(conn, cmds)
+			result = self.put_data(conn, creds, nums)
 			self.end_conn(conn)
-			self.debug("Got: {}".format(result))
 			if not result["ok"]:
 				raise BrokenServiceException("putflag request error")
 		else:
@@ -224,8 +234,6 @@ class OrcanoChecker(BaseChecker):
 			try:
 				creds = self.load_creds()
 			except:
-				# TODO: Do we need to try/catch this? Other checker examples
-				# don't do this.
 				raise BrokenServiceException("previous putflag failed")
 
 			expected_nums = self.flag_to_nums(self.flag)
@@ -236,13 +244,13 @@ class OrcanoChecker(BaseChecker):
 			cmds += [self.make_cmd("getn", [i]) for i in range(len(expected_nums))]
 
 			conn = self.begin_conn()
-			result = self.make_request(conn, cmds)
+			result = self.get_data(conn, creds, len(expected_nums))
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("getflag request error")
 
 			# reverse and drop last (from the user cmd)
-			got_nums = result["out"][:-1][::-1]
+			got_nums = result["out"]
 			assert_equals(
 				tuple(got_nums),
 				tuple(expected_nums),
@@ -252,9 +260,44 @@ class OrcanoChecker(BaseChecker):
 			raise EnoException("getflag bad variant_id")
 
 	def putnoise(self):
-		pass
+		if self.variant_id == 0:
+			creds = self.gen_creds()
+			# TODO: Other types of noise.
+			data = [rand_sint() for i in range(1 + secrets.randbelow(20))]
+
+			db = {}
+			db["data"] = data
+			db |= self.save_creds(creds)
+			self.chain_db = db
+
+			conn = self.begin_conn()
+			result = self.put_data(conn, creds, data)
+			self.end_conn(conn)
+			if not result["ok"]:
+				raise BrokenServiceException("putnoise request error")
+		else:
+			raise EnoException("putnoise bad variant_id")
 	def getnoise(self):
-		pass
+		if self.variant_id == 0:
+			try:
+				creds = self.load_creds()
+				data = self.chain_db["data"]
+			except:
+				raise BrokenServiceException("previous putnoise failed")
+
+			conn = self.begin_conn()
+			result = self.get_data(conn, creds, len(data))
+			self.end_conn(conn)
+			if not result["ok"]:
+				raise BrokenServiceException("getnoise request error")
+
+			assert_equals(
+				tuple(result["out"]),
+				tuple(data),
+				message="getnoise incorrect data"
+			)
+		else:
+			raise EnoException("putnoise bad variant_id")
 
 	def havoc(self):
 		pass
