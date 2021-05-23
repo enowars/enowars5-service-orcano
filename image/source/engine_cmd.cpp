@@ -316,6 +316,8 @@ void Engine::cmd_inspect()
 		getSFloat(&v);
 		hostWrite(&v, sizeof(float));
 	}
+
+	hostFlush();
 }
 
 void Engine::cmd_dbg_fail()
