@@ -158,11 +158,9 @@ void Engine::cmd_weight()
 	float sum = 0.f;
 	while (p.getRemaining() > 0)
 	{
-		OC_LOG("weight #5.5");
 		float coeff = p.getQuant();
 		float value;
 		getSFloat(&value);
-		OC_LOG("coeff=%f, val=%f", coeff, value);
 		sum += coeff * value;
 	}
 
