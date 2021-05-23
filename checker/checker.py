@@ -90,6 +90,9 @@ class OrcanoChecker(BaseChecker):
 		key0 = self.chain_db["key0"]
 		key1 = self.chain_db["key1"]
 		return uid0, uid1, key0, key1
+	def creds_to_attack_info(self, creds):
+		uid0, uid1, key0, key1 = creds
+		return ":i{}:i{}".format(uid0, uid1)
 
 	def make_user(self, creds):
 		uid0, uid1, key0, key1 = creds
@@ -228,6 +231,8 @@ class OrcanoChecker(BaseChecker):
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("putflag request error")
+
+			return self.creds_to_attack_info(creds)
 		else:
 			raise EnoException("putflag bad variant_id")
 	def getflag(self):
