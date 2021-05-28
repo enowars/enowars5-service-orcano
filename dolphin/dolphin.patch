@@ -27,20 +27,72 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Externals/SFML/src/S
          if (m_type == Tcp)
          {
              // Disable the Nagle algorithm (i.e. removes buffering of TCP packets)
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Config/MainSettings.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/Config/MainSettings.cpp
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Config/MainSettings.cpp	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/Config/MainSettings.cpp	2021-05-25 18:42:30.642227500 +0200
+@@ -115,6 +115,8 @@
+ const Info<bool> MAIN_ALLOW_SD_WRITES{{System::Main, "Core", "WiiSDCardAllowWrites"}, true};
+ const Info<bool> MAIN_ENABLE_SAVESTATES{{System::Main, "Core", "EnableSaveStates"}, false};
+ 
++const Info<int> MAIN_GECKO_PORT{{System::Main, "Core", "GeckoPort"}, 0}; // LinusS: Gecko port config
++
+ // Main.Display
+ 
+ const Info<std::string> MAIN_FULLSCREEN_DISPLAY_RES{
+diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Config/MainSettings.h ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/Config/MainSettings.h
+--- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Config/MainSettings.h	2021-04-24 19:44:51.000000000 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/Config/MainSettings.h	2021-05-25 18:40:55.333729200 +0200
+@@ -92,6 +92,8 @@
+ extern const Info<bool> MAIN_ENABLE_SAVESTATES;
+ extern const Info<DiscIO::Region> MAIN_FALLBACK_REGION;
+ 
++extern const Info<int> MAIN_GECKO_PORT; // LinusS: Gecko port config
++
+ // Main.DSP
+ 
+ extern const Info<bool> MAIN_DSP_CAPTURE_LOG;
 diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp
 --- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-04-24 19:44:51.000000000 +0200
-+++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-05-20 00:03:51.294337200 +0200
-@@ -19,6 +19,9 @@
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-05-25 20:19:06.618846300 +0200
+@@ -19,6 +19,13 @@
  #include "Common/Thread.h"
  #include "Core/Core.h"
  
 +// LinusS: For CopyToEmu and GetPointer
 +#include "Core/HW/Memmap.h"
++// For Config::Get
++#include "Common/Config/Config.h"
++// For MAIN_GECKO_PORT
++#include "Core/Config/MainSettings.h"
 +
  namespace ExpansionInterface
  {
  u16 GeckoSockServer::server_port;
-@@ -82,7 +85,7 @@
+@@ -56,18 +63,20 @@
+   Common::SetCurrentThreadName("Gecko Connection Waiter");
+ 
+   sf::TcpListener server;
+-  server_port = 0xd6ec;  // "dolphin gecko"
++
++  server_port = Config::Get(Config::MAIN_GECKO_PORT);
+   for (int bind_tries = 0; bind_tries <= 10 && !server_running.IsSet(); bind_tries++)
+   {
+     server_running.Set(server.listen(server_port) == sf::Socket::Done);
+-    if (!server_running.IsSet())
+-      server_port++;
++    /*if (!server_running.IsSet())
++      server_port++;*/
+   }
+ 
+   if (!server_running.IsSet())
+     return;
+ 
+   Core::DisplayMessage(fmt::format("USBGecko: Listening on TCP port {}", server_port), 5000);
++  INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: Listening on TCP port {} (log)", server_port);
+ 
+   server.setBlocking(false);
+ 
+@@ -82,7 +91,7 @@
        new_client = std::make_unique<sf::TcpSocket>();
      }
  
@@ -49,7 +101,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
    }
  }
  
-@@ -124,7 +127,8 @@
+@@ -124,7 +133,8 @@
    {
      bool did_nothing = true;
  
@@ -59,7 +111,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
        std::lock_guard lk(transfer_lock);
  
        // what's an ideal buffer size?
-@@ -148,13 +152,25 @@
+@@ -148,13 +158,25 @@
          std::vector<char> packet(send_fifo.begin(), send_fifo.end());
          send_fifo.clear();
  
@@ -89,7 +141,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
    }
  
    client->disconnect();
-@@ -186,6 +202,7 @@
+@@ -186,6 +208,7 @@
    // |= 0x08000000 if successful
    case CMD_RECV:
    {
@@ -97,7 +149,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
      std::lock_guard lk(transfer_lock);
      if (!recv_fifo.empty())
      {
-@@ -220,9 +237,131 @@
+@@ -220,9 +243,134 @@
      break;
    }
  
@@ -127,6 +179,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +    {
 +      INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: CMD_FLUSH failure");
 +      // TODO fatal?
++      abort();
 +    }
 +
 +    break;
@@ -158,7 +211,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +
 +      // Read from queue buffer
 +      size_t got = recv_fifo.size();
-+      if (size_left < got)
++      if ((size_t)size_left < got)
 +        got = size_left;
 +
 +      std::vector<u8> queue_data(recv_fifo.begin(), recv_fifo.begin() + got);
@@ -196,6 +249,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +  {
 +    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead failure");
 +    // TODO fatal?
++    abort();
 +  }
 +}
 +
@@ -211,6 +265,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +  {
 +    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite failed to resolve address");
 +    // TODO fatal?
++    abort();
 +    return;
 +  }
 +
