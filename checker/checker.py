@@ -306,10 +306,10 @@ class OrcanoChecker(BaseChecker):
 			raise EnoException("putnoise bad variant_id")
 
 	def havoc(self):
-		pass
+		raise EnoException("havoc bad variant_id")
 
 	def exploit(self):
-		pass
+		raise EnoException("exploit bad variant_id")
 
 app = OrcanoChecker.service
 if __name__ == "__main__":
