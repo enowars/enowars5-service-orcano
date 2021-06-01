@@ -1,4 +1,4 @@
-FROM orcano-dolphin
+FROM ghcr.io/enowars/enowars5-service-orcano-dolphin
 
 # Configure Dolphin
 # Careful: ~ doesn't work here!
