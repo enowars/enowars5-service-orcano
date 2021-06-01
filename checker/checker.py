@@ -23,7 +23,7 @@ class OrcanoChecker(BaseChecker):
 	flag_variants = 1
 	noise_variants = 1
 	havoc_variants = 0 # TODO
-	exploit_variants = 0
+	exploit_variants = 1
 	service_name = "orcano"
 	port = 53273
 
