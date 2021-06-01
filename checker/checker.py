@@ -121,6 +121,7 @@ class OrcanoChecker(BaseChecker):
 
 		# Receive response and parse
 		response = conn.read_until(PROMPT_TEXT.encode())
+		self.debug("make_request: got {}".format(response))
 		lines = response.split(b"\n")
 		try:
 			lines = [l.decode() for l in lines]
@@ -193,10 +194,10 @@ class OrcanoChecker(BaseChecker):
 		result = {}
 		result["ok"] = success
 		if success:
-			#self.debug("OK: Got {}".format(out_data))
+			self.debug("OK: Got {}".format(out_data))
 			result["out"] = out_data
 		else:
-			#self.debug("ERR: Got \"{}\"".format(out_data))
+			self.debug("ERR: Got \"{}\"".format(out_data))
 			result["err"] = err_data
 		#result["extra"] = mid # TODO
 
