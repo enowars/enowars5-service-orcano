@@ -26,7 +26,9 @@ const Engine::CommandInfo Engine::s_commands[] = {
 
 	{ "inspect", &Engine::cmd_inspect },
 
+#if !OC_FINAL
 	{ "dbg_fail", &Engine::cmd_dbg_fail },
+#endif
 
 	{ nullptr, nullptr }
 };
@@ -320,8 +322,10 @@ void Engine::cmd_inspect()
 	hostFlush();
 }
 
+#if !OC_FINAL
 void Engine::cmd_dbg_fail()
 {
 	const char *msg = "dbg_fail invoked";
 	hostWriteMsg(makeIdent("ERRQ"), strlen(msg), msg);
 }
+#endif

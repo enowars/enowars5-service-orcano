@@ -179,7 +179,9 @@ private:
 
 	void cmd_inspect();
 
+#if !OC_FAIL
 	void cmd_dbg_fail();
+#endif
 
 private:
 	StackValue m_stack[256] = {};
