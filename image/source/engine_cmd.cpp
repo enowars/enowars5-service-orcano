@@ -35,32 +35,25 @@ const Engine::CommandInfo Engine::s_commands[] = {
 
 void Engine::cmd_int()
 {
-	int v;
-	getSInt(&v);
-	putInt(v);
+	putInt(getSInt());
 }
 
 void Engine::cmd_float()
 {
-	float v;
-	getSFloat(&v);
-	putFloat(v);
+	putFloat(getSFloat());
 }
 
 void Engine::cmd_dup()
 {
-	StackValue sv;
-	getStack(&sv);
+	StackValue sv = getStack();
 	putStack(sv);
 	putStack(sv);
 }
 
 void Engine::cmd_rpt()
 {
-	int count;
-	getUInt(&count);
-	StackValue sv;
-	getStack(&sv);
+	int count = getUInt();
+	StackValue sv = getStack();
 	for (int i = 0; i < count; ++i)
 	{
 		putStack(sv);
@@ -69,67 +62,57 @@ void Engine::cmd_rpt()
 
 void Engine::cmd_del()
 {
-	StackValue sv;
-	getStack(&sv);
+	getStack();
 }
 
 void Engine::cmd_drop()
 {
-	int count;
-	getUInt(&count);
+	int count = getUInt();
 	for (int i = 0; i < count; ++i)
 	{
-		StackValue sv;
-		getStack(&sv);
+		getStack();
 	}
 }
 
 void Engine::cmd_addi()
 {
-	int lhs, rhs;
-	getSInt(&lhs);
-	getSInt(&rhs);
+	int lhs = getSInt();
+	int rhs = getSInt();
 	putInt(lhs + rhs);
 }
 
 void Engine::cmd_addf()
 {
-	float lhs, rhs;
-	getSFloat(&lhs);
-	getSFloat(&rhs);
+	float lhs = getSFloat();
+	float rhs = getSFloat();
 	putFloat(lhs + rhs);
 }
 
 void Engine::cmd_muli()
 {
-	int lhs, rhs;
-	getSInt(&lhs);
-	getSInt(&rhs);
+	int lhs = getSInt();
+	int rhs = getSInt();
 	putInt(lhs * rhs);
 }
 
 void Engine::cmd_mulf()
 {
-	float lhs, rhs;
-	getSFloat(&lhs);
-	getSFloat(&rhs);
+	float lhs = getSFloat();
+	float rhs = getSFloat();
 	putFloat(lhs * rhs);
 }
 
 void Engine::cmd_poly()
 {
-	int count;
-	getUInt(&count);
+	int count = getUInt();
 
-	float x;
-	getSFloat(&x);
+	float x = getSFloat();
 
 	float xp = 1.f;
 	float y = 0.f;
 	for (int i = 0; i < count; ++i)
 	{
-		float coeff;
-		getSFloat(&coeff);
+		float coeff = getSFloat();
 		y += coeff * xp;
 		xp *= x;
 	}
@@ -161,8 +144,7 @@ void Engine::cmd_weight()
 	while (p.getRemaining() > 0)
 	{
 		float coeff = p.getQuant();
-		float value;
-		getSFloat(&value);
+		float value = getSFloat();
 		sum += coeff * value;
 	}
 
@@ -178,10 +160,10 @@ void Engine::cmd_user()
 		int key0;
 		int key1;
 	} msg_buffer;
-	getSInt(&msg_buffer.uid0);
-	getSInt(&msg_buffer.uid1);
-	getSInt(&msg_buffer.key0);
-	getSInt(&msg_buffer.key1);
+	msg_buffer.uid0 = getSInt();
+	msg_buffer.uid1 = getSInt();
+	msg_buffer.key0 = getSInt();
+	msg_buffer.key1 = getSInt();
 	hostWriteMsg(makeIdent("USRQ"), sizeof(msg_buffer), &msg_buffer);
 
 	uint32_t answer_ident;
@@ -219,8 +201,8 @@ void Engine::cmd_setn()
 		StackValue sv;
 	} setn_buffer;
 
-	getSInt(&setn_buffer.idx);
-	getStack(&setn_buffer.sv);
+	setn_buffer.idx = getSInt();
+	setn_buffer.sv = getStack();
 
 	if (!m_user_authenticated)
 		return;
@@ -240,7 +222,7 @@ void Engine::cmd_getn()
 		int idx;
 	} getn_buffer;
 
-	getSInt(&getn_buffer.idx);
+	getn_buffer.idx = getSInt();
 
 	if (!m_user_authenticated)
 	{
@@ -279,7 +261,7 @@ void Engine::cmd_lockn()
 		int idx;
 	} lockn_buffer;
 
-	getUInt(&lockn_buffer.idx);
+	lockn_buffer.idx = getUInt();
 
 	if (!m_user_authenticated)
 		return;
@@ -292,10 +274,8 @@ void Engine::cmd_lockn()
 
 void Engine::cmd_inspect()
 {
-	int num_ints;
-	getUInt(&num_ints);
-	int num_floats;
-	getUInt(&num_floats);
+	int num_ints = getUInt();
+	int num_floats = getUInt();
 
 	OC_LOG("SPOILER: inspect num_ints=%d, num_floats=%d\n", num_ints, num_floats);
 
@@ -308,14 +288,12 @@ void Engine::cmd_inspect()
 
 	for (int i = 0; i < num_ints; ++i)
 	{
-		int v;
-		getSInt(&v);
+		int v = getSInt();
 		hostWrite(&v, sizeof(int));
 	}
 	for (int i = 0; i < num_floats; ++i)
 	{
-		float v;
-		getSFloat(&v);
+		float v = getSFloat();
 		hostWrite(&v, sizeof(float));
 	}
 

@@ -128,7 +128,12 @@ inline void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 	} while(false)
 
 #define OC_ERR(fmt, ...) \
-	OC_HOST_TEXTMSG("ERRQ", fmt, __VA_ARGS__)
+	do \
+	{ \
+		OC_HOST_TEXTMSG("ERRQ", fmt, __VA_ARGS__); \
+		OC_HANG(); \
+	} while (false) \
+
 #if 0
 #define OC_LOG(fmt, ...) \
 	OC_HOST_TEXTMSG("LOGQ", fmt, __VA_ARGS__)

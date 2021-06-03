@@ -13,11 +13,11 @@ enum StackValueType
 	StackValueType_Float,
 };
 
-enum ImmediateType
+enum ArgumentType
 {
-	ImmediateType_Int,
-	ImmediateType_Float,
-	ImmediateType_Paired,
+	ArgumentType_Int,
+	ArgumentType_Float,
+	ArgumentType_Paired,
 };
 
 struct StackValue
@@ -131,26 +131,27 @@ private:
 	void runCommand(const char *cmd, const char *arg);
 
 	// Argument and stack handling
-	bool putStack(StackValue v);
-	bool putInt(int v);
-	bool putFloat(float v);
+	void putStack(StackValue v);
+	void putInt(int v);
+	void putFloat(float v);
 
-	bool getStack(StackValue *v);
-	bool getSInt(int *v);
-	bool getUInt(int *v);
-	bool getSFloat(float *v);
-	bool getUFloat(float *v);
+	StackValue getStack();
+	int getSInt();
+	int getUInt();
+	float getSFloat();
+	float getUFloat();
 
-	bool readStack(StackValue *v);
-	bool readSInt(int *v);
-	bool readUInt(int *v);
-	bool readSFloat(float *v);
-	bool readUFloat(float *v);
+	StackValue readStack();
+	int readSInt();
+	int readUInt();
+	float readSFloat();
+	float readUFloat();
 
 	void prepareArgs(const char *arg);
-	bool prepareNextArg();
+	void prepareNextArg();
 
 	void prepareStackArg();
+	void prepareDefaultArg();
 
 	// Error handling
 	void syntaxError(const char *text);

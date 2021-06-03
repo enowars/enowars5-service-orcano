@@ -106,197 +106,150 @@ void Engine::runCommand(const char *cmd, const char *arg)
 	(this->*(matching_ci->function))();
 }
 
-bool Engine::putInt(int v)
+void Engine::putInt(int v)
 {
-	StackValue sv;
-	sv.type = StackValueType_Int;
-	sv.i = v;
-	return putStack(sv);
+	putStack(StackValue{ .type = StackValueType_Int, .i = v });
 }
 
-bool Engine::putFloat(float v)
+void Engine::putFloat(float v)
 {
-	StackValue sv;
-	sv.type = StackValueType_Float;
-	sv.f = v;
-	return putStack(sv);
+	putStack(StackValue{ .type = StackValueType_Float, .f = v });
 }
 
-bool Engine::putStack(StackValue v)
+void Engine::putStack(StackValue v)
 {
 	if (m_stack_size >= (int)OC_ARRAYSIZE(m_stack))
 	{
 		runtimeError("stack overflow");
-		return false;
+		return;
 	}
 
 	m_stack[m_stack_size++] = v;
-	return true;
 }
 
-bool Engine::getStack(StackValue *v)
+StackValue Engine::getStack()
 {
-	if (!prepareNextArg())
-		return false;
-	return readStack(v);
+	prepareNextArg();
+	return readStack();
 }
 
-bool Engine::getSInt(int *v)
+int Engine::getSInt()
 {
-	if (!prepareNextArg())
-		return false;
-	return readSInt(v);
+	prepareNextArg();
+	return readSInt();
 }
 
-bool Engine::getUInt(int *v)
+int Engine::getUInt()
 {
-	if (!prepareNextArg())
-		return false;
-	return readUInt(v);
+	prepareNextArg();
+	return readUInt();
 }
 
-bool Engine::getSFloat(float *v)
+float Engine::getSFloat()
 {
-	if (!prepareNextArg())
-		return false;
-	return readSFloat(v);
+	prepareNextArg();
+	return readSFloat();
 }
 
-bool Engine::getUFloat(float *v)
+float Engine::getUFloat()
 {
-	if (!prepareNextArg())
-		return false;
-	return readUFloat(v);
+	prepareNextArg();
+	return readUFloat();
 }
 
-bool Engine::readStack(StackValue *v)
+StackValue Engine::readStack()
 {
-	if (m_arg_type == ImmediateType_Paired)
+	if (m_arg_type == ArgumentType_Paired || m_arg_type == ArgumentType_Float)
 	{
-		float f;
-		if (!readSFloat(&f))
-			return false;
-		v->type = StackValueType_Float;
-		v->f = f;
-		return true;
+		return StackValue{ .type = StackValueType_Float, .f = readSFloat() };
+	}
+	else if (m_arg_type == ArgumentType_Int)
+	{
+		return StackValue{ .type = StackValueType_Int, .i = readSInt() };
 	}
 
-	if (m_arg_type == ImmediateType_Int)
-	{
-		v->type = StackValueType_Int;
-		if (!readSInt(&v->i))
-			return false;
-	}
-	else if (m_arg_type == ImmediateType_Float)
-	{
-		v->type = StackValueType_Float;
-		if (!readSFloat(&v->f))
-			return false;
-	}
-	return true;
+	OC_ERR("unknown immediate type");
 }
 
-bool Engine::readSInt(int *v)
+int Engine::readSInt()
 {
-	if (m_arg_type == ImmediateType_Paired)
+	if (m_arg_type == ArgumentType_Paired)
 	{
-		float f;
-		if (!readSFloat(&f))
-			return false;
-		*v = (int)f;
-		return true;
+		return (int)readSFloat();
+	}
+	else if (m_arg_type == ArgumentType_Int)
+	{
+		return m_arg_value.i;
+	}
+	else if (m_arg_type == ArgumentType_Float)
+	{
+		return (int)m_arg_value.f;
 	}
 
-	if (m_arg_type == ImmediateType_Int)
-	{
-		*v = m_arg_value.i;
-	}
-	else if (m_arg_type == ImmediateType_Float)
-	{
-		*v = (int)m_arg_value.f;
-	}
-
-	return true;
+	OC_ERR("unknown immediate type");
 }
 
-bool Engine::readUInt(int *v)
+int Engine::readUInt()
 {
-	if (m_arg_type == ImmediateType_Paired)
+	if (m_arg_type == ArgumentType_Paired)
 	{
-		float f;
-		if (!readUFloat(&f))
-			return false;
-		*v = (int)f;
 		// SIC: we do not clamp.
-		return true;
+		return (int)readUFloat();
 	}
-
-	if (m_arg_type == ImmediateType_Int)
+	else if (m_arg_type == ArgumentType_Int)
 	{
-		*v = m_arg_value.i;
+		return m_arg_value.i < 0 ? 0 : m_arg_value.i;
 	}
-	else if (m_arg_type == ImmediateType_Float)
+	else if (m_arg_type == ArgumentType_Float)
 	{
-		*v = (int)m_arg_value.f;
+		return ((int)m_arg_value.f) < 0 ? 0 : (int)m_arg_value.f;
 	}
-
-	// Clamp
-	if (*v < 0)
+	else
 	{
-		*v = 0;
+		OC_ERR("unknown immediate type");
 	}
-
-	return true;
 }
 
-bool Engine::readSFloat(float *v)
+float Engine::readSFloat()
 {
-	if (m_arg_type == ImmediateType_Paired)
+	if (m_arg_type == ArgumentType_Paired)
 	{
 		quant_set_type(QuantType_Int16);
-		*v = load_gqr2(&m_arg_ps_data[m_arg_next]);
-		OC_LOG("readSFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), *v, m_arg_ps_data[m_arg_next]);
+		float v = load_gqr2(&m_arg_ps_data[m_arg_next]);
+		OC_LOG("readSFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), v, m_arg_ps_data[m_arg_next]);
 		quant_set_type(QuantType_UInt16);
-		return true;
+		return v;
+	}
+	else if (m_arg_type == ArgumentType_Int)
+	{
+		return (float)m_arg_value.i;
+	}
+	else if (m_arg_type == ArgumentType_Float)
+	{
+		return m_arg_value.f;
 	}
 
-	if (m_arg_type == ImmediateType_Int)
-	{
-		*v = (float)m_arg_value.i;
-	}
-	else if (m_arg_type == ImmediateType_Float)
-	{
-		*v = m_arg_value.f;
-	}
-
-	return true;
+	OC_ERR("unknown immediate type");
 }
 
-bool Engine::readUFloat(float *v)
+float Engine::readUFloat()
 {
-	if (m_arg_type == ImmediateType_Paired)
+	if (m_arg_type == ArgumentType_Paired)
 	{
-		*v = load_gqr2(&m_arg_ps_data[m_arg_next]);
-		OC_LOG("readUFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), *v, m_arg_ps_data[m_arg_next]);
-		return true;
+		float v = load_gqr2(&m_arg_ps_data[m_arg_next]);
+		OC_LOG("readUFloat paired: gqr = %08x, sf = %f, raw=%04x\n", get_gqr2(), v, m_arg_ps_data[m_arg_next]);
+		return v;
 	}
-
-	if (m_arg_type == ImmediateType_Int)
+	else if (m_arg_type == ArgumentType_Int)
 	{
-		*v = (float)m_arg_value.i;
+		return (float)m_arg_value.i < 0.f ? 0.f : (float)m_arg_value.i;
 	}
-	else if (m_arg_type == ImmediateType_Float)
+	else if (m_arg_type == ArgumentType_Float)
 	{
-		*v = m_arg_value.f;
+		return m_arg_value.f < 0.f ? 0.f : m_arg_value.f;
 	}
-
-	// Clamp
-	if (*v < 0)
-	{
-		*v = 0.f;
-	}
-
-	return true;
+	
+	OC_ERR("unkown immediate type");
 }
 
 void Engine::prepareArgs(const char *arg)
@@ -305,16 +258,16 @@ void Engine::prepareArgs(const char *arg)
 	m_arg_next = 0;
 	m_arg_available = 0;
 
-	m_arg_type = ImmediateType_Int; // just some default so it's not floating.
+	m_arg_type = ArgumentType_Int; // just some default so it's not floating.
 	m_arg_value.i = 0;
 }
 
-bool Engine::prepareNextArg()
+void Engine::prepareNextArg()
 {
 	// Continue parsing existing one if multiple available
 	if (++m_arg_next < m_arg_available)
 	{
-		return true;
+		return;
 	}
 
 	// Set default available, paired overrides this.
@@ -327,7 +280,7 @@ bool Engine::prepareNextArg()
 	{
 		// No more arguments. Feed from stack.
 		prepareStackArg();
-		return true;
+		return;
 	}
 	// Move to next argument.
 	++m_arg_text;
@@ -337,7 +290,8 @@ bool Engine::prepareNextArg()
 	if (!code)
 	{
 		syntaxError("invalid argument: expected type code");
-		return false;
+		prepareDefaultArg();
+		return;
 	}
 	// Move to contents.
 	++m_arg_text;
@@ -357,31 +311,33 @@ bool Engine::prepareNextArg()
 	}
 	else if (code == 'i')
 	{
-		m_arg_type = ImmediateType_Int;
+		m_arg_type = ArgumentType_Int;
 		m_arg_value.i = strtol(m_arg_text, (char **)&got_end, 0);
 	}
 	else if (code == 'f')
 	{
-		m_arg_type = ImmediateType_Float;
+		m_arg_type = ArgumentType_Float;
 		m_arg_value.f = strtof(m_arg_text, (char **)&got_end);
 	}
 	else if (code == 'p')
 	{
-		m_arg_type = ImmediateType_Paired;
+		m_arg_type = ArgumentType_Paired;
 		// Decompress Base64
 		void *b64_data;
 		int b64_len;
 		if (!base64Decode(m_arg_text, end, &b64_data, &b64_len))
 		{
 			syntaxError("invalid argument: bad paired text");
-			return false;
+			prepareDefaultArg();
+			return;
 		}
 
 		// One byte for scale, following are pairs for entries
 		if (b64_len < 3 || (b64_len - 1) % sizeof(int16_t) != 0)
 		{
 			syntaxError("invalid argument: bad paired len");
-			return false;
+			prepareDefaultArg();
+			return;
 		}
 
 		// Read scale and payload
@@ -403,17 +359,18 @@ bool Engine::prepareNextArg()
 	else
 	{
 		syntaxError("invalid argument: unexpected type code");
-		return false;
+		prepareDefaultArg();
+		return;
 	}
 
 	if (got_end && got_end != end)
 	{
 		syntaxError("invalid argument: unexpected post-immediate text");
-		return false;
+		prepareDefaultArg();
+		return;
 	}
 
 	m_arg_text = end;
-	return true;
 }
 
 void Engine::prepareStackArg()
@@ -421,8 +378,7 @@ void Engine::prepareStackArg()
 	// If the stack is empty, provide a default zero
 	if (!m_stack_arg_size)
 	{
-		m_arg_type = ImmediateType_Int;
-		m_arg_value.i = 0;
+		prepareDefaultArg();
 		return;
 	}
 
@@ -441,14 +397,24 @@ void Engine::prepareStackArg()
 	// Prepare
 	if (top.type == StackValueType_Int)
 	{
-		m_arg_type = ImmediateType_Int;
+		m_arg_type = ArgumentType_Int;
 		m_arg_value.i = top.i;
 	}
 	else if (top.type == StackValueType_Float)
 	{
-		m_arg_type = ImmediateType_Float;
+		m_arg_type = ArgumentType_Float;
 		m_arg_value.f = top.f;
 	}
+	else
+	{
+		OC_ERR("invalid sv type");
+	}
+}
+
+void Engine::prepareDefaultArg()
+{
+	m_arg_type = ArgumentType_Int;
+	m_arg_value.i = 0;
 }
 
 const char *Engine::getError()
@@ -493,7 +459,7 @@ void Engine::dumpStack(char *buffer, int size)
 		}
 		else
 		{
-			OC_HANG();
+			OC_ERR("bad sv type");
 		}
 
 		// todo: is this safe?
