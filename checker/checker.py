@@ -104,7 +104,10 @@ class OrcanoChecker(BaseChecker):
 	def begin_conn(self):
 		conn = self.connect()
 		welcome = conn.read_until(PROMPT_TEXT.encode())
-		self.debug("Got welcome: {}".format(welcome))
+		if not welcome:
+			self.debug("read_until welcome remainder: ", conn.read())
+			raise BrokenServiceException("read_until welcome timeout")
+		self.debug("begin_conn: Got welcome: {}".format(welcome))
 		# TODO: Test welcome text
 		return conn
 
@@ -121,6 +124,9 @@ class OrcanoChecker(BaseChecker):
 
 		# Receive response and parse
 		response = conn.read_until(PROMPT_TEXT.encode())
+		if not response:
+			self.debug("read_until request remainder: ", conn.read())
+			raise BrokenServiceException("read_until request timeout")
 		self.debug("make_request: got {}".format(response))
 		lines = response.split(b"\n")
 		try:
@@ -180,24 +186,24 @@ class OrcanoChecker(BaseChecker):
 			success = False
 			err_data = rl_suffix
 		else:
-			raise BrokenServiceException("Last output line was neither error nor output")
+			raise BrokenServiceException("Last output line was invalid")
 
 		# Check non-last lines
 		for prefix, suffix in output[:-1]:
-			if prefix == "log":
+			if prefix == "inspect":
 				pass # TODO
-			elif prefix == "inspect":
-				pass # TODO
+			#elif prefix == "log":
+			#	pass # TODO
 			else:
-				raise BrokenServiceException("Inner output line was neither log nor inspect")
+				raise BrokenServiceException("Inner output line was invalid")
 
 		result = {}
 		result["ok"] = success
 		if success:
-			self.debug("OK: Got {}".format(out_data))
+			self.debug("make_request: OK - {}".format(out_data))
 			result["out"] = out_data
 		else:
-			self.debug("ERR: Got \"{}\"".format(out_data))
+			self.debug("make_request: ERR - \"{}\"".format(out_data))
 			result["err"] = err_data
 		#result["extra"] = mid # TODO
 
