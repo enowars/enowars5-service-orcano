@@ -53,7 +53,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Con
  extern const Info<bool> MAIN_DSP_CAPTURE_LOG;
 diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp
 --- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-04-24 19:44:51.000000000 +0200
-+++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-05-25 20:19:06.618846300 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-06-04 00:55:41.054363300 +0200
 @@ -19,6 +19,13 @@
  #include "Common/Thread.h"
  #include "Core/Core.h"
@@ -68,7 +68,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
  namespace ExpansionInterface
  {
  u16 GeckoSockServer::server_port;
-@@ -56,18 +63,20 @@
+@@ -56,22 +63,26 @@
    Common::SetCurrentThreadName("Gecko Connection Waiter");
  
    sf::TcpListener server;
@@ -92,16 +92,29 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
  
    server.setBlocking(false);
  
-@@ -82,7 +91,7 @@
+   auto new_client = std::make_unique<sf::TcpSocket>();
++  // LinusS: Optimize connection waiter CPU time
++  bool got_anything = false;
+   while (server_running.IsSet())
+   {
+     if (server.accept(*new_client) == sf::Socket::Done)
+@@ -80,9 +91,14 @@
+       waiting_socks.push(std::move(new_client));
+ 
        new_client = std::make_unique<sf::TcpSocket>();
++      got_anything = true;
      }
  
 -    Common::SleepCurrentThread(1);
-+    Common::SleepCurrentThread(10);
++    // LinusS: Optimize connection waiter CPU time
++    int sleep_time = 10;
++    if (got_anything)
++      sleep_time = 200;
++    Common::SleepCurrentThread(sleep_time);
    }
  }
  
-@@ -124,7 +133,8 @@
+@@ -124,7 +140,8 @@
    {
      bool did_nothing = true;
  
@@ -111,7 +124,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
        std::lock_guard lk(transfer_lock);
  
        // what's an ideal buffer size?
-@@ -148,13 +158,25 @@
+@@ -148,13 +165,25 @@
          std::vector<char> packet(send_fifo.begin(), send_fifo.end());
          send_fifo.clear();
  
@@ -141,7 +154,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
    }
  
    client->disconnect();
-@@ -186,6 +208,7 @@
+@@ -186,6 +215,7 @@
    // |= 0x08000000 if successful
    case CMD_RECV:
    {
@@ -149,7 +162,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
      std::lock_guard lk(transfer_lock);
      if (!recv_fifo.empty())
      {
-@@ -220,9 +243,134 @@
+@@ -220,9 +250,134 @@
      break;
    }
  
@@ -287,16 +300,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 Only in ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI: EXI_DeviceGecko.cpp.bak
 diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h
 --- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h	2021-04-24 19:44:51.000000000 +0200
-+++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h	2021-05-18 01:06:33.513050300 +0200
-@@ -33,7 +33,7 @@
-   std::deque<u8> send_fifo;
-   std::deque<u8> recv_fifo;
- 
--private:
-+protected: // LinusS: For access to client_running to be able to abort
-   static int client_count;
-   Common::Flag client_running;
- 
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.h	2021-06-04 00:07:17.730088500 +0200
 @@ -54,6 +54,12 @@
    bool IsPresent() const override { return true; }
    void ImmReadWrite(u32& _uData, u32 _uSize) override;
