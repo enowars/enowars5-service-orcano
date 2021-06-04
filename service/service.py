@@ -65,8 +65,6 @@ class OrcanoFrontend:
 
 		# Open conn to USB Gecko port
 		connect_fail = True
-		# If an instance of Dolphin just died, the old listen port might still
-		# be occupied. Dolphin will try these 10 ports as alternatives.
 		tries = int(DOL_STARTUP_TIME / DOL_STARTUP_INTERVAL)
 		p = inst["dol_port"]
 		for i in range(tries):
@@ -138,32 +136,6 @@ class OrcanoFrontend:
 					result += data
 					result += b"\n"
 					break
-				elif ident == b"USRQ":
-					if len(data) != 16:
-						raise DolphinCommunicationError("invalid auth query len 0x{:x}".format(len(data)))
-
-					uid = struct.unpack_from(">Q", data, 0)[0]
-					key = data[0x8:0x10]
-
-					exists = True
-					key_path = os.path.join(DATA_DIR, "auth_{:016x}".format(uid))
-					try:
-						with open(key_path, "rb") as f:
-							file_key = f.read()
-					except FileNotFoundError:
-						exists = False
-					
-					if exists:
-						valid = (file_key == key)
-					else:
-						# New user
-						with open(key_path, "wb") as f:
-							f.write(key)
-						valid = True
-
-					usra_data = bytearray(4)
-					struct.pack_into(">L", usra_data, 0, 1 if valid else 0)
-					await dol_timeout(dol_write_msg(b"USRA", usra_data))
 				elif ident == b"GTNQ":
 					if len(data) != 0xc:
 						raise DolphinCommunicationError("invalid getn query len 0x{:x}".format(len(data)))
@@ -192,7 +164,6 @@ class OrcanoFrontend:
 					if len(data) != 0x14:
 						raise DolphinCommunicationError("invalid setn query len 0x{:x}".format(len(data)))
 
-					# TODO: Should we check that this user exists here?
 					uid = struct.unpack_from(">Q", data, 0x0)[0]
 					idx = struct.unpack_from(">L", data, 0x8)[0]
 					num_data = data[0xc:0x14]

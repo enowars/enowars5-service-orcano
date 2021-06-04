@@ -153,41 +153,99 @@ void Engine::cmd_weight()
 
 void Engine::cmd_user()
 {
-	struct __attribute__((__packed__))
-	{
-		int uid0;
-		int uid1;
-		int key0;
-		int key1;
-	} msg_buffer;
-	msg_buffer.uid0 = getSInt();
-	msg_buffer.uid1 = getSInt();
-	msg_buffer.key0 = getSInt();
-	msg_buffer.key1 = getSInt();
-	hostWriteMsg(makeIdent("USRQ"), sizeof(msg_buffer), &msg_buffer);
+	// Helper to retrieve one half of the key
+	auto recv_key = [](int uid0, int uid1, int idx) {
+		// Request num
+		struct __attribute__((__packed__))
+		{
+			int uid0;
+			int uid1;
+			int idx;
+		} getn_buffer;
+		getn_buffer.uid0 = uid0;
+		getn_buffer.uid1 = uid1;
+		getn_buffer.idx = idx;
+		hostWriteMsg(makeIdent("GTNQ"), sizeof(getn_buffer), &getn_buffer);
 
-	uint32_t answer_ident;
-	uint32_t answer_len;
-	void *answer_data;
-	hostReadMsg(&answer_ident, &answer_len, &answer_data);
+		// Read response
+		uint32_t answer_ident;
+		uint32_t answer_len;
+		void *answer_data;
+		hostReadMsg(&answer_ident, &answer_len, &answer_data);
+		if (answer_ident != makeIdent("GTNA") || answer_len != sizeof(StackValue))
+		{
+			OC_ERR("user recv_key failure");
+			return 0;
+		}
 
-	if (answer_ident != makeIdent("USRA") || answer_len != 4)
-	{
-		// TODO should we ERRQ here?
-		runtimeError("bad answer for user cmd");
+		StackValue num;
+		memcpy(&num, answer_data, sizeof(num));
 		free(answer_data);
-		return;
-	}
 
-	int success = *(uint32_t *)answer_data;
-	free(answer_data);
-	putInt(success);
+		// This may interpret float as int but for auth purposes this is fine.
+		return num.i;
+	};
+
+	// Get args
+	int uid0 = getSInt();
+	int uid1 = getSInt();
+	int key0 = getSInt();
+	int key1 = getSInt();
+
+	constexpr int kKey0Idx = 0x20000000;
+	constexpr int kKey1Idx = 0x20000001;
+
+	// Get stored keys
+	int stored_key0 = recv_key(uid0, uid1, kKey0Idx);
+	int stored_key1 = recv_key(uid0, uid1, kKey1Idx);
+
+	bool success = false;
+	if (stored_key0 || stored_key1)
+	{
+		// Password exists, check for match
+		if (key0 == stored_key0 && key1 == stored_key1)
+		{
+			success = true;
+		}
+	}
+	else
+	{
+		// Key unset, register
+		struct __attribute__((__packed__))
+		{
+			int uid0;
+			int uid1;
+			int idx;
+			StackValue sv;
+		} setn_buffer;
+		setn_buffer.uid0 = uid0;
+		setn_buffer.uid1 = uid1;
+		setn_buffer.sv = { .type = StackValueType_Int };
+
+		// Set lower half
+		setn_buffer.idx = kKey0Idx;
+		setn_buffer.sv.i = key0;
+		hostWriteMsg(makeIdent("STNQ"), sizeof(setn_buffer), &setn_buffer);
+
+		// Set upper half
+		setn_buffer.idx = kKey1Idx;
+		setn_buffer.sv.i = key1;
+		hostWriteMsg(makeIdent("STNQ"), sizeof(setn_buffer), &setn_buffer);
+
+		// Sign in
+		success = true;
+	}
 
 	if (success)
 	{
+		putInt(1);
 		m_user_authenticated = true;
-		m_user_uid0 = msg_buffer.uid0;
-		m_user_uid1 = msg_buffer.uid1;
+		m_user_uid0 = uid0;
+		m_user_uid1 = uid1;
+	}
+	else
+	{
+		putInt(0);
 	}
 }
 
