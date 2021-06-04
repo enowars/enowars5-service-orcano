@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 
 InitFunctionReg *InitFunctionReg::s_pFirst = nullptr;
 
@@ -79,9 +80,9 @@ static int base64DecodeBatch(const char *start, uint8_t *out)
 	return bytes;
 };
 
-bool base64Decode(const char *start, const char *end, void **out_buf, int *out_len)
+bool base64Decode(const char *text, void **out_buf, int *out_len)
 {
-	int in_len = end - start;
+	int in_len = strlen(text);
 	if (in_len % 4)
 		return false;
 
@@ -90,7 +91,7 @@ bool base64Decode(const char *start, const char *end, void **out_buf, int *out_l
 	int buf_len = 0;
 	for (int i = 0; i < batch_count; ++i)
 	{
-		int got = base64DecodeBatch(start + i * 4, buffer + buf_len);
+		int got = base64DecodeBatch(text + i * 4, buffer + buf_len);
 		if (!got)
 		{
 			free(buffer);

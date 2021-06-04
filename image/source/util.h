@@ -31,4 +31,4 @@ struct InitFunctionReg
 	static InitFunctionReg *s_pFirst;
 };
 
-bool base64Decode(const char *start, const char *end, void **out_buf, int *out_len);
+bool base64Decode(const char *text, void **out_buf, int *out_len);

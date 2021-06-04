@@ -325,7 +325,14 @@ void Engine::prepareNextArg()
 		// Decompress Base64
 		void *b64_data;
 		int b64_len;
-		if (!base64Decode(m_arg_text, end, &b64_data, &b64_len))
+
+		// Make a null terminated version
+		int b64_text_len = end - m_arg_text;
+		char *b64_text = (char *)alloca(b64_text_len + 1);
+		memcpy(b64_text, m_arg_text, b64_text_len);
+		b64_text[b64_text_len] = '\0';
+		
+		if (!base64Decode(b64_text, &b64_data, &b64_len))
 		{
 			syntaxError("invalid argument: bad paired text");
 			prepareDefaultArg();

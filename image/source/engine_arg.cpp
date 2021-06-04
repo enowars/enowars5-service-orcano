@@ -28,10 +28,10 @@ float CustomArgParser::getQuant()
 
 void CustomArgParser::decompressBase64()
 {
-	// Decode remaining part as B64
+	// Decode remaining part as null terminated B64
 	void *b64_buf;
 	int b64_len;
-	if (!base64Decode(m_buffer + m_seek, m_buffer + m_size, &b64_buf, &b64_len))
+	if (!base64Decode(m_buffer + m_seek, &b64_buf, &b64_len))
 	{
 		m_engine->runtimeError("invalid custom immediate b64");
 		m_size = 0;
