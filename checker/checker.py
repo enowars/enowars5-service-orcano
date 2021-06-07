@@ -145,7 +145,7 @@ class OrcanoChecker(BaseChecker):
 		# Parse output
 		output = []
 		for l in lines:
-			line_prefix_end = l.find(": ")
+			line_prefix_end = l.find(":")
 			if line_prefix_end < 0:
 				self.debug("make_request: Can't find terminator: {}".format(l))
 				raise BrokenServiceException("Invalid output format returned from request")
