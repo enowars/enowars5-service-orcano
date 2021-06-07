@@ -164,6 +164,7 @@ private:
 	void cmd_rpt();
 	void cmd_del();
 	void cmd_drop();
+	void cmd_stack();
 
 	void cmd_addi();
 	void cmd_addf();

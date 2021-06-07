@@ -5,14 +5,36 @@ from enochecker.utils import SimpleSocket, assert_equals, assert_in
 
 import secrets
 import re
+import struct
 
-def rand_uint():
-	return secrets.randbits(31)
-def rand_sint():
-	raw = secrets.randbits(32)
-	if raw >= 2**31:
-		raw -= 2**32
+def rand_uint(below=2**31):
+	return secrets.randbelow(below)
+def rand_sint(below=2**31):
+	raw = rand_uint(below)
+	if rand_bool():
+		raw = -raw
 	return raw
+def rand_bool():
+	return secrets.choice([True, False])
+def rand_float(total=2**22, denom=2**7, signed=True, force_f32=False):
+	# Default: float in [-32768; 32768] with max 7 bits decimal
+	raw = secrets.randbelow(total)
+	raw /= denom
+	if signed and rand_bool():
+		raw = -raw
+	if force_f32:
+		raw = f32(raw)
+	return raw
+def f32(f):
+	# Force to single precision
+	val = struct.pack("f", f)
+	return struct.unpack("f", val)[0]
+def rand_sv():
+	# Random stackval
+	if rand_bool():
+		return rand_sint()
+	else:
+		return rand_float()
 def chunks(l, n):
 	for i in range(0, len(l), n):
 		yield l[i:i+n]
@@ -22,15 +44,13 @@ PROMPT_TEXT = "> "
 class OrcanoChecker(BaseChecker):
 	flag_variants = 1
 	noise_variants = 1
-	havoc_variants = 0 # TODO
+	havoc_variants = 17
 	exploit_variants = 1
 	service_name = "orcano"
 	port = 53273
 
 	# Helpers
 	def make_cmd(self, cmd, args = []):
-		# TODO: Arg layout randomization:
-		# push on stack then consume implicitly or with s, use paired, etc.
 		text = cmd
 		for arg in args:
 			text += ":"
@@ -43,6 +63,44 @@ class OrcanoChecker(BaseChecker):
 			else:
 				raise EnoException("make_cmd bad arg type {}".format(type(arg)))
 		return text
+	def make_cmd_rand(self, cmd, args = []):
+		# TODO: Use paired randomly
+		out_cmds = []
+		out_final_args = []
+		for arg in args:
+			# Figure out type
+			if isinstance(arg, int):
+				arg_type = "int"
+			elif isinstance(arg, float):
+				arg_type = "float"
+			elif isinstance(arg, str):
+				arg_type = "str"
+			else:
+				raise EnoException("make_cmd_rand bad arg type {}".format(type(arg)))
+
+			# Decide whether to prefix or use inplace
+			if arg_type in ["int", "float"] and rand_bool():
+				# Prefix
+				if arg_type == "int":
+					base = secrets.choice(["dec", "hex"])
+					if base == "dec":
+						out_cmds.append("int:i{}".format(arg))
+					elif base == "hex":
+						out_cmds.append("int:i{}".format(hex(arg)))
+					else:
+						assert(False)
+				elif arg_type == "float":
+					out_cmds.append(self.make_cmd("float", [arg]))
+				else:
+					assert(False)
+				out_final_args.append("s")
+			else:
+				# Inplace
+				out_final_args.append(arg)
+
+		out_cmds.reverse()
+		out_cmds.append(self.make_cmd(cmd, out_final_args))
+		return out_cmds
 
 	def flag_to_nums(self, flag):
 		nums = []
@@ -100,6 +158,8 @@ class OrcanoChecker(BaseChecker):
 	def make_user(self, creds):
 		uid0, uid1, key0, key1 = creds
 		return self.make_cmd("user", [uid0, uid1, key0, key1])
+	def make_user_rand(self):
+		return self.make_user(self.gen_creds())
 
 	def begin_conn(self):
 		conn = self.connect()
@@ -157,14 +217,11 @@ class OrcanoChecker(BaseChecker):
 		if len(output) == 0:
 			raise BrokenServiceException("No output returned from request")
 
-		# Parse result line
-		rl_prefix, rl_suffix = output[-1]
-		if rl_prefix == "out":
-			# Parse output data
-			success = True
-
+		def parse_nums(suffix):
 			out_data = []
-			for num_text in rl_suffix.strip().split(" "):
+			if not suffix:
+				return []
+			for num_text in suffix.strip().split(" "):
 				if len(num_text) == 0:
 					raise BrokenServiceException("Bad output line spacing")
 				
@@ -173,15 +230,26 @@ class OrcanoChecker(BaseChecker):
 					try:
 						out_data.append(int(num_text[1:]))
 					except ValueError:
+						self.debug("parse_nums fail int: {}".format(num_text))
 						raise BrokenServiceException("Bad output int data")
 				elif type_char == "f":
 					try:
-						out_data.append(float(num_text[1:]))
+						# Have to force to F32 here! Otherwise 7 decimal digits
+						# is insufficient to distinguish.
+						out_data.append(f32(float(num_text[1:])))
 					except ValueError:
+						self.debug("parse_nums fail float: {}".format(num_text))
 						raise BrokenServiceException("Bad output float data")
 				else:
 					raise BrokenServiceException("Bad output number type")
+			return out_data
 
+		# Parse result line
+		rl_prefix, rl_suffix = output[-1]
+		if rl_prefix == "out":
+			# Parse output data
+			success = True
+			out_data = parse_nums(rl_suffix)
 		elif rl_prefix == "error":
 			success = False
 			err_data = rl_suffix
@@ -189,11 +257,10 @@ class OrcanoChecker(BaseChecker):
 			raise BrokenServiceException("Last output line was invalid")
 
 		# Check non-last lines
+		mid = []
 		for prefix, suffix in output[:-1]:
 			if prefix == "inspect":
-				pass # TODO
-			#elif prefix == "log":
-			#	pass # TODO
+				mid.append((prefix, parse_nums(suffix)))
 			else:
 				raise BrokenServiceException("Inner output line was invalid")
 
@@ -205,9 +272,38 @@ class OrcanoChecker(BaseChecker):
 		else:
 			self.debug("make_request: ERR - \"{}\"".format(out_data))
 			result["err"] = err_data
-		#result["extra"] = mid # TODO
+		result["mid"] = mid
 
 		return result
+
+	def single_request(self, cmds):
+		conn = self.begin_conn()
+		result = self.make_request(conn, cmds)
+		self.end_conn(conn)
+		return result
+
+	def single_request_expect(self, cmds, expect_out, expect_mid=[]):
+		r = self.single_request(cmds)
+		if not r["ok"]:
+			raise BrokenServiceException("{}: unexpected error".format(self.action_title))
+		if tuple(r["out"]) != tuple(expect_out):
+			self.debug("{}: expected {}, got {}".format(self.action_title, tuple(expect_out), tuple(r["out"])))
+			raise BrokenServiceException("{}: unexpected result".format(self.action_title))
+		if tuple(r["mid"]) != tuple(expect_mid):
+			self.debug("{}: expected mid {}, got mid {}".format(self.action_title, tuple(expect_mid), tuple(r["mid"])))
+		return r
+
+	def single_request_expect_fail(self, cmds, expect_err=None, expect_mid=None):
+		r = self.single_request(cmds)
+		if r["ok"]:
+			raise BrokenServiceException("{}: unexpected success", self.action_title)
+		if expect_err != None and r["err"] != expect_err:
+			self.debug("{}: expected {}, got {}".format(self.action_title, expect_err, r["err"]))
+			raise BrokenServiceException("{}: unexpected kind of error".format(self.action_title))
+		if tuple(r["mid"]) != tuple(expect_mid):
+			self.debug("{}: expected mid {}, got mid {}".format(self.action_title, tuple(expect_mid), tuple(r["mid"])))
+			raise BrokenServiceException("{}: unexpected output".format(self.action_title))
+		return r
 
 	def put_data(self, conn, creds, nums):
 		cmds = []
@@ -227,6 +323,7 @@ class OrcanoChecker(BaseChecker):
 
 	# Entrypoints
 	def putflag(self):
+		self.action_title = "putflag"
 		if self.variant_id == 0:
 			# Encode flag into numbers
 			nums = self.flag_to_nums(self.flag)
@@ -245,6 +342,7 @@ class OrcanoChecker(BaseChecker):
 		else:
 			raise EnoException("putflag bad variant_id")
 	def getflag(self):
+		self.action_title = "getflag"
 		if self.variant_id == 0:
 			try:
 				creds = self.load_creds()
@@ -275,6 +373,7 @@ class OrcanoChecker(BaseChecker):
 			raise EnoException("getflag bad variant_id")
 
 	def putnoise(self):
+		self.action_title = "putnoise"
 		if self.variant_id == 0:
 			creds = self.gen_creds()
 			# TODO: Other types of noise.
@@ -293,6 +392,7 @@ class OrcanoChecker(BaseChecker):
 		else:
 			raise EnoException("putnoise bad variant_id")
 	def getnoise(self):
+		self.action_title = "getnoise"
 		if self.variant_id == 0:
 			try:
 				creds = self.load_creds()
@@ -315,9 +415,158 @@ class OrcanoChecker(BaseChecker):
 			raise EnoException("putnoise bad variant_id")
 
 	def havoc(self):
-		raise EnoException("havoc bad variant_id")
+		self.action_title = "havoc"
+		if self.variant_id == 0:
+			self.action_title = "havoc int"
+			val = rand_float()
+			cmds = self.make_cmd_rand("int", [val])
+			self.single_request_expect(cmds, [int(val)])
+		elif self.variant_id == 1:
+			self.action_title = "havoc float"
+			val = int(rand_float()) # get a float-safe int
+			cmds = self.make_cmd_rand("float", [val])
+			self.single_request_expect(cmds, [float(val)])
+		elif self.variant_id == 2:
+			self.action_title = "havoc dup"
+			val = rand_sv()
+			cmds = self.make_cmd_rand("dup", [val])
+			self.single_request_expect(cmds, [val, val])
+		elif self.variant_id == 3:
+			self.action_title = "havoc rpt"
+			val = rand_sv()
+			count = secrets.randbelow(32)
+			cmds = self.make_cmd_rand("rpt", [count, val])
+			self.single_request_expect(cmds, [val] * count)
+		elif self.variant_id == 4:
+			self.action_title = "havoc del"
+			count = secrets.randbelow(32) + 1
+			vals = [rand_sv() for i in range(count)]
+			cmds = []
+			for val in vals:
+				cmds += self.make_cmd_rand("stack", [val])
+			cmds += self.make_cmd_rand("del")
+			self.single_request_expect(cmds, reversed(vals[:-1]))
+		elif self.variant_id == 5:
+			self.action_title = "havoc drop"
+			count = secrets.randbelow(32) + 1
+			vals = [rand_sv() for i in range(count)]
+			cmds = []
+			for val in vals:
+				cmds += self.make_cmd_rand("stack", [val])
+			count_drop = secrets.randbelow(count)
+			cmds += self.make_cmd_rand("drop", [count_drop])
+			# Can't use shorthand notation [:-x] here because x can be zero
+			self.single_request_expect(cmds, reversed(vals[:len(vals) - count_drop]))
+		elif self.variant_id == 6:
+			self.action_title = "havoc addi"
+			lhs = rand_sint(2 ** 20)
+			rhs = rand_sint(2 ** 20)
+			cmds = self.make_cmd_rand("addi", [lhs, rhs])
+			self.single_request_expect(cmds, [lhs + rhs])
+		elif self.variant_id == 7:
+			self.action_title = "havoc addf"
+			lhs = rand_float()
+			rhs = rand_float()
+			cmds = self.make_cmd_rand("addf", [lhs, rhs])
+			self.single_request_expect(cmds, [f32(lhs + rhs)])
+		elif self.variant_id == 8:
+			self.action_title = "havoc muli"
+			lhs = rand_sint(2 ** 14)
+			rhs = rand_sint(2 ** 14)
+			cmds = self.make_cmd_rand("muli", [lhs, rhs])
+			self.single_request_expect(cmds, [lhs * rhs])
+		elif self.variant_id == 9:
+			self.action_title = "havoc mulf"
+			lhs = rand_float(2 ** 10, 2 ** 5) # todo: accuracy fine here?
+			rhs = rand_float(2 ** 10, 2 ** 5)
+			cmds = self.make_cmd_rand("mulf", [lhs, rhs])
+			self.single_request_expect(cmds, [f32(lhs * rhs)])
+		elif self.variant_id == 10:
+			self.action_title = "havoc poly"
+			# At most quadratic. Some napkin math suggests the FP precision
+			# should be sufficient with these values.
+			x = rand_float(2 ** 8, 2 ** 2)
+			order = rand_uint(3)
+			coeffs = [rand_sint(2 ** 4) for i in range(order)]
+
+			y = 0.0
+			xp = 1.0
+			for c in coeffs:
+				y += f32(c * xp)
+				y = f32(y)
+				xp *= x
+				xp = f32(xp)
+
+			cmds = self.make_cmd_rand("poly", [order] + [x] + coeffs)
+			self.single_request_expect(cmds, [y])
+		elif self.variant_id == 11:
+			self.action_title = "havoc weight"
+			# TODO
+		elif self.variant_id == 12:
+			self.action_title = "havoc user"
+			creds = self.gen_creds()
+			creds_wrong = (creds[0], creds[1], rand_sint(), rand_sint())
+			cmds = []
+			cmds.append(self.make_user(creds))
+			cmds.append(self.make_user(creds_wrong))
+			self.single_request_expect(cmds, [0, 1])
+		elif self.variant_id == 13:
+			self.action_title = "havoc getn"
+			idx = rand_uint()
+			cmds = []
+			cmds.append(self.make_user_rand())
+			cmds.append(self.make_cmd("del"))
+			cmds += self.make_cmd_rand("getn", [idx])
+			self.single_request_expect(cmds, [0])
+		elif self.variant_id == 14:
+			self.action_title = "havoc setn"
+			idx = rand_uint()
+			val = rand_sint()
+			cmds = []
+			cmds.append(self.make_user_rand())
+			cmds.append(self.make_cmd("del"))
+			cmds += self.make_cmd_rand("setn", [idx, val])
+			cmds += self.make_cmd_rand("getn", [idx])
+			self.single_request_expect(cmds, [val])
+		elif self.variant_id == 15:
+			self.action_title = "havoc lockn"
+			idx = rand_uint()
+			val = rand_sint()
+			new_val = rand_sint()
+			cmds = []
+			cmds.append(self.make_user_rand())
+			cmds.append(self.make_cmd("del"))
+			cmds += self.make_cmd_rand("setn", [idx, val])
+			cmds += self.make_cmd_rand("getn", [idx])
+			cmds += self.make_cmd_rand("lockn", [idx])
+			cmds += self.make_cmd_rand("getn", [idx])
+			cmds += self.make_cmd_rand("setn", [idx, new_val])
+			cmds += self.make_cmd_rand("getn", [idx])
+			self.single_request_expect(cmds, [val, val, val])
+		elif self.variant_id == 16:
+			self.action_title = "havoc inspect"
+			count_int = secrets.randbelow(16)
+			count_float = secrets.randbelow(16)
+			count_remain = secrets.randbelow(4)
+			vals_int = [rand_sint() for i in range(count_int)]
+			vals_float = [rand_float() for i in range(count_float)]
+			vals_remain = [rand_sv() for i in range(count_remain)]
+			vals = list(reversed(vals_int + vals_float + vals_remain))
+
+			cmds = []
+			for val in vals:
+				cmds += self.make_cmd_rand("stack", [val])
+			cmds += self.make_cmd_rand("inspect", [count_int, count_float])
+			self.single_request_expect(
+				cmds,
+				vals_remain,
+				[vals_int + vals_float]
+			)
+		else:
+			raise EnoException("havoc bad variant_id")
 
 	def exploit(self):
+		self.action_title = "exploit"
 		if self.variant_id == 0:
 			if not self.attack_info:
 				raise BrokenServiceException("exploit previous putflag failed")

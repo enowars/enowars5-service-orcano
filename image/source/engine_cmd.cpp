@@ -10,6 +10,7 @@ const Engine::CommandInfo Engine::s_commands[] = {
 	{ "rpt", &Engine::cmd_rpt },
 	{ "del", &Engine::cmd_del },
 	{ "drop", &Engine::cmd_drop },
+	{ "stack", &Engine::cmd_stack },
 
 	{ "addi", &Engine::cmd_addi },
 	{ "addf", &Engine::cmd_addf },
@@ -72,6 +73,11 @@ void Engine::cmd_drop()
 	{
 		getStack();
 	}
+}
+
+void Engine::cmd_stack()
+{
+	putStack(getStack());
 }
 
 void Engine::cmd_addi()

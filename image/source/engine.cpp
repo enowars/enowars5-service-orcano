@@ -446,22 +446,23 @@ void Engine::dumpStack(char *buffer, int size)
 	int left = size;
 	buffer[0] = '\0';
 
-	const char *prefix = "out: ";
+	const char *prefix = "out:";
 	strncat(buffer, prefix, left);
 	left -= strlen(prefix);
 
-	char item_buffer[16];
+	// Entries can take more space than one might think because of big floats
+	char item_buffer[64];
 	for (int i = m_stack_size; i > 0; --i)
 	{
 		StackValue sv = m_stack[i - 1];
 		if (sv.type == StackValueType_Int)
 		{
-			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "i%d ", sv.i);
+			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), " i%d", sv.i);
 			item_buffer[OC_ARRAYSIZE(item_buffer) - 1] = '\0';
 		}
 		else if (sv.type == StackValueType_Float)
 		{
-			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), "f%.7f ", sv.f);
+			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), " f%.7f", sv.f);
 			item_buffer[OC_ARRAYSIZE(item_buffer) - 1] = '\0';
 		}
 		else
@@ -501,7 +502,7 @@ char *processRequest(const char *request_data)
 
 	// Dump stack
 	// Size should be sufficient for everything.
-	int buffer_size = 16 + e.getStackSize() * 16;
+	int buffer_size = 16 + e.getStackSize() * 64;
 	char *buffer = (char *)malloc(buffer_size);
 	e.dumpStack(buffer, buffer_size);
 
