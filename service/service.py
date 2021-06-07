@@ -199,7 +199,18 @@ class OrcanoFrontend:
 					with open(lock_path, "wb") as f:
 						pass
 				elif ident == b"INSQ":
-					print(data)
+					if len(data) < 4:
+						raise DolphinCommunicationError("invalid inspect query len 0x{:x}".format(len(data)))
+					int_count = struct.unpack_from(">L", data, 0x0)[0]
+					result += b"inspect:"
+					for i in range((len(data) - 4) // 4):
+						if i < int_count:
+							val = struct.unpack_from(">l", data, 0x4 + i * 4)[0]
+							result += " i{}".format(val).encode()
+						else:
+							val = struct.unpack_from(">f", data, 0x4 + i * 4)[0]
+							result += " f{:.07f}".format(val).encode()
+					result += b"\n"
 				elif ident == b"LOGQ":
 					print(data)
 				elif ident == b"ERRQ":

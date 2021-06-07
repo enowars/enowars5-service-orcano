@@ -338,11 +338,13 @@ void Engine::cmd_inspect()
 	OC_LOG("SPOILER: inspect num_ints=%d, num_floats=%d\n", num_ints, num_floats);
 
 	uint32_t ident = makeIdent("INSQ");
-	int size = num_ints * sizeof(int) + num_floats * sizeof(float);
+	int size = sizeof(int) + num_ints * sizeof(int) + num_floats * sizeof(float);
 	OC_LOG("SPOILER: size=%d\n", size);
 
 	hostWrite(&ident, sizeof(ident));
 	hostWrite(&size, sizeof(size));
+
+	hostWrite(&num_ints, sizeof(num_ints));
 
 	for (int i = 0; i < num_ints; ++i)
 	{
