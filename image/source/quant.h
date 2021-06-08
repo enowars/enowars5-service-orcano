@@ -3,15 +3,56 @@
 #include <cstdint>
 
 // We use GQR2 for all our quantization needs.
+#if !OC_QUANT_EXTERN
+
+inline void set_gqr2(uint32_t v)
+{
+	__asm__ volatile(
+		"mtspr 914, %[v]"
+		:
+		: [v]"b"(v)
+	);
+}
+inline uint32_t get_gqr2()
+{
+	uint32_t v;
+	__asm__ volatile(
+		"mfspr %[v], 914"
+		: [v]"=b"(v)
+		:
+	);
+	return v;
+}
+inline float load_gqr2(void *p)
+{
+	float f;
+	__asm__ volatile(
+		"psq_l %[f], 0(%[p]), 1, 2"
+		: [f]"=f"(f)
+		: [p]"b"(p)
+	);
+	return f;
+}
+inline void store_gqr2(void *p, float f)
+{
+	__asm__ volatile(
+		"psq_st %[f], 0(%[p]), 1, 2"
+		:
+		: [p]"b"(p), [f]"f"(f)
+	);
+}
+
+#else
+
 extern "C"
 {
-
 void set_gqr2(uint32_t v);
 uint32_t get_gqr2();
 float load_gqr2(void *p);
 void store_gqr2(void *p, float f);
-
 };
+
+#endif
 
 // ppc_750cl.pdf Table 2-20
 enum

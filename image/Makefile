@@ -25,6 +25,7 @@ INCLUDES	:=
 # options for code generation
 #---------------------------------------------------------------------------------
 
+ASFLAGS     = 
 CFLAGS		= -DOC_FINAL -g -O2 -Wall $(MACHDEP) $(INCLUDE)
 CXXFLAGS	= $(CFLAGS)
 
