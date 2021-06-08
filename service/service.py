@@ -209,7 +209,7 @@ class OrcanoFrontend:
 							result += " i{}".format(val).encode()
 						else:
 							val = struct.unpack_from(">f", data, 0x4 + i * 4)[0]
-							result += " f{:.07f}".format(val).encode()
+							result += " f{:.9g}".format(val).encode()
 					result += b"\n"
 				elif ident == b"LOGQ":
 					print(data)

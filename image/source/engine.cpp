@@ -462,7 +462,7 @@ void Engine::dumpStack(char *buffer, int size)
 		}
 		else if (sv.type == StackValueType_Float)
 		{
-			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), " f%.7f", sv.f);
+			snprintf(item_buffer, OC_ARRAYSIZE(item_buffer), " f%.9g", sv.f);
 			item_buffer[OC_ARRAYSIZE(item_buffer) - 1] = '\0';
 		}
 		else
