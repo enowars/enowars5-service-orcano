@@ -15,6 +15,7 @@ DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
 IMAGE_PATH = "./image.dol"
 DATA_DIR = "/data"
 WORKER_COUNT = 2
+DATA_EXPIRY_TIME = 35 * 60 # 35 minutes ~= 3 min/round * 10 rounds + margin
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
 MAX_REQUEST_TIME = 0.25
@@ -22,7 +23,61 @@ DOL_TIMEOUT = 2.0 # timeout for comms with Dolphin before abort & restart
 DOL_STARTUP_TIME = 20.0 # how long to wait for Dolphin to start up in seconds
 DOL_STARTUP_INTERVAL = 0.05 # wait time between successive attempts to get to Dolphin
 
+async def imm_error(t):
+	try:
+		await t
+	except:
+		print("Task {} failed with traceback:".format(t))
+		traceback.print_exc()
+
 class OrcanoFrontend:
+	async def handle_cleanup(self):
+		while True:
+			# Work before sleep so we do it at startup
+			print("Beginning periodic data cleanup...")
+			scan_time = datetime.datetime.now(datetime.timezone.utc)
+			total_count = 0
+			deleted_count = 0
+			error_count = 0
+			files = []
+			with os.scandir(DATA_DIR) as it:
+				for de in it:
+					# Give other stuff a chance to run since we might have to
+					# process a large amount of files
+					await asyncio.sleep(0)
+
+					# Skip irrelevant stuff
+					if not de.is_file():
+						continue
+					if de.name.startswith("."):
+						continue
+
+					total_count += 1
+
+					de_stat = de.stat()
+					de_mtime = datetime.datetime.fromtimestamp(de_stat.st_mtime, tz=datetime.timezone.utc)
+					if scan_time - de_mtime >= datetime.timedelta(seconds=DATA_EXPIRY_TIME):
+						# Delete
+						try:
+							# print("Deleting {} (mtime={}, stime={})".format(de.path, de_mtime, scan_time))
+							os.remove(de.path)
+							deleted_count += 1
+						except OSError:
+							print("Data cleanup failed to delete {}, traceback:".format(de.path))
+							traceback.print_exc()
+							error_count += 1
+
+			end_time = datetime.datetime.now(datetime.timezone.utc)
+			print("Data cleanup finished in {:.3f} seconds.".format((end_time - scan_time).total_seconds()))
+			print("Data cleanup stats: total {}, deleted {}, errors {}, remaining {}".format(
+				total_count,
+				deleted_count,
+				error_count,
+				total_count - deleted_count
+			))
+
+			await asyncio.sleep(DATA_EXPIRY_TIME)
+
 	async def handle_workers(self):
 		workers = []
 		while True:
@@ -306,7 +361,8 @@ class OrcanoFrontend:
 		for i in range(55020, 55520):
 			await self.port_pool.put(i)
 		self.request_queue = asyncio.Queue(maxsize=QUEUE_MAX_LEN)
-		asyncio.create_task(self.handle_workers())
+		asyncio.create_task(imm_error(self.handle_workers()))
+		asyncio.create_task(imm_error(self.handle_cleanup()))
 		server = await asyncio.start_server(self.handle_connection, "0.0.0.0", SERVICE_PORT)
 		print("Serving requests on {}".format(SERVICE_PORT))
 		await server.serve_forever()
