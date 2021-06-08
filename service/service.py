@@ -229,7 +229,7 @@ class OrcanoFrontend:
 			print("Serving request to Dolphin on port {}".format(inst["dol_port"]))
 			try:
 				result = await asyncio.wait_for(process_request(task), MAX_REQUEST_TIME)
-			except (asyncio.IncompleteReadError, asyncio.TimeoutError, DolphinCommunicationError):
+			except (asyncio.IncompleteReadError, asyncio.TimeoutError, DolphinCommunicationError) as ex:
 				# Dolphin died or timed out
 				print("Request execution failed, traceback:")
 				traceback.print_exc()
@@ -241,7 +241,10 @@ class OrcanoFrontend:
 				print("Restart complete.")
 
 				# Fail the request
-				result = b"error: internal\n"
+				if isinstance(ex, asyncio.TimeoutError):
+					result = b"error: timeout\n"
+				else:
+					result = b"error: internal\n"
 
 			# For performance estimation
 			# TODO: Should probably get rid of this overhead for final
