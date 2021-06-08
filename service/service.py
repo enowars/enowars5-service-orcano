@@ -15,7 +15,8 @@ DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
 IMAGE_PATH = "./image.dol"
 DATA_DIR = "/data"
 WORKER_COUNT = 2
-DATA_EXPIRY_TIME = 35 * 60 # 35 minutes ~= 3 min/round * 10 rounds + margin
+DATA_CLEANUP_EXPIRY_TIME = 35 * 60 # 35 minutes ~= 3 min/round * 10 rounds + margin
+DATA_CLEANUP_CYCLE_TIME = 10 * 60 # guarantees max age 45 minutes
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
 MAX_REQUEST_TIME = 0.25
@@ -56,7 +57,7 @@ class OrcanoFrontend:
 
 					de_stat = de.stat()
 					de_mtime = datetime.datetime.fromtimestamp(de_stat.st_mtime, tz=datetime.timezone.utc)
-					if scan_time - de_mtime >= datetime.timedelta(seconds=DATA_EXPIRY_TIME):
+					if scan_time - de_mtime >= datetime.timedelta(seconds=DATA_CLEANUP_EXPIRY_TIME):
 						# Delete
 						try:
 							# print("Deleting {} (mtime={}, stime={})".format(de.path, de_mtime, scan_time))
@@ -76,7 +77,8 @@ class OrcanoFrontend:
 				total_count - deleted_count
 			))
 
-			await asyncio.sleep(DATA_EXPIRY_TIME)
+			# Wait for next cycle
+			await asyncio.sleep(DATA_CLEANUP_CYCLE_TIME)
 
 	async def handle_workers(self):
 		workers = []
