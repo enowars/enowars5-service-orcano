@@ -270,7 +270,7 @@ class OrcanoChecker(BaseChecker):
 			self.debug("make_request: OK - {}".format(out_data))
 			result["out"] = out_data
 		else:
-			self.debug("make_request: ERR - \"{}\"".format(out_data))
+			self.debug("make_request: ERR - \"{}\"".format(err_data))
 			result["err"] = err_data
 		result["mid"] = mid
 
