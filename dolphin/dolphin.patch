@@ -53,7 +53,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/Con
  extern const Info<bool> MAIN_DSP_CAPTURE_LOG;
 diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp
 --- ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-04-24 19:44:51.000000000 +0200
-+++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-06-04 00:55:41.054363300 +0200
++++ ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3-dev/Source/Core/Core/HW/EXI/EXI_DeviceGecko.cpp	2021-06-09 00:23:57.693896300 +0200
 @@ -19,6 +19,13 @@
  #include "Common/Thread.h"
  #include "Core/Core.h"
@@ -109,7 +109,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +    // LinusS: Optimize connection waiter CPU time
 +    int sleep_time = 10;
 +    if (got_anything)
-+      sleep_time = 200;
++      sleep_time = 500;
 +    Common::SleepCurrentThread(sleep_time);
    }
  }
@@ -169,7 +169,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +  // LinusS: Add flush command
 +  case CMD_FLUSH:
 +  {
-+    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: CMD_FLUSH");
++    DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: CMD_FLUSH");
 +    EnsureClient();
 +
 +    std::lock_guard lk(transfer_lock);
@@ -208,7 +208,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +void CEXIGecko::DMARead(u32 addr, u32 len)
 +{
 +  // Wait for startup
-+  INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead Addr=0x{:08x} Len=0x{:x}", addr, len);
++  DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead Addr=0x{:08x} Len=0x{:x}", addr, len);
 +  EnsureClient();
 +
 +  std::lock_guard lk(transfer_lock);
@@ -220,7 +220,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +  {
 +    if (!recv_fifo.empty())
 +    {
-+      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from queue");
++      // DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from queue");
 +
 +      // Read from queue buffer
 +      size_t got = recv_fifo.size();
@@ -231,14 +231,14 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +      recv_fifo.erase(recv_fifo.begin(), recv_fifo.begin() + got);
 +
 +      Memory::CopyToEmu(addr_left, queue_data.data(), got);
-+      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead queued got 0x{:x}", got);
++      // DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead queued got 0x{:x}", got);
 +
 +      addr_left += got;
 +      size_left -= got;
 +    }
 +    else
 +    {
-+      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from net");
++      // DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead DBG from net");
 +
 +      // Read from network
 +      int max_get = 0x800;
@@ -254,7 +254,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +        break;
 +
 +      recv_fifo.insert(recv_fifo.end(), net_data.begin(), net_data.begin() + got);
-+      // INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead network got 0x{:x}", got);
++      // DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMARead network got 0x{:x}", got);
 +    }
 +  }
 +
@@ -268,7 +268,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +
 +void CEXIGecko::DMAWrite(u32 addr, u32 len)
 +{
-+  INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite Addr=0x{:08x} Len=0x{:x}", addr, len);
++  DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite Addr=0x{:08x} Len=0x{:x}", addr, len);
 +  EnsureClient();
 +
 +  std::lock_guard lk(transfer_lock);
@@ -276,7 +276,7 @@ diff -ur ./dolphin-18174d3ed64f117baa755ec961345ee362a7ccc3/Source/Core/Core/HW/
 +  u8 *mem_data = Memory::GetPointer(addr);
 +  if (!mem_data)
 +  {
-+    INFO_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite failed to resolve address");
++    DEBUG_LOG_FMT(EXPANSIONINTERFACE, "USBGecko: DMAWrite failed to resolve address");
 +    // TODO fatal?
 +    abort();
 +    return;
