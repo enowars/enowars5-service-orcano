@@ -58,7 +58,7 @@ RUN cmake -DCMAKE_INSTALL_PREFIX=/dolphin -DENABLE_QT=OFF -DENABLE_EVDEV=OFF ..
 RUN make -j6
 RUN make install
 
-# Cleanup (removes ~500M so worth it)
-WORKDIR /
-RUN rm -r dolphin-build
+# Cleanup
+WORKDIR ..
+RUN rm -r .git build
 ENV DOLPHIN_EMU_NOGUI=/dolphin/bin/dolphin-emu-nogui
