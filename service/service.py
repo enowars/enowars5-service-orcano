@@ -140,6 +140,14 @@ class OrcanoFrontend:
 			raise ConnectionRefusedError
 
 		print("Dolphin started, port={}, pid={}".format(inst["dol_port"], inst["dol_proc"].pid))
+
+		# Wait for ready
+		rdy_msg = await inst["dol_rx"].readexactly(4 + 4)
+		if rdy_msg != b"RDYQ\x00\x00\x00\x00":
+			raise ConnectionRefusedError
+
+		print("Dolphin ready, port={}, pid={}".format(inst["dol_port"], inst["dol_proc"].pid))
+
 		return inst
 
 	async def stop_dolphin(self, inst):

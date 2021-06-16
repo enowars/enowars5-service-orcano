@@ -19,6 +19,9 @@ int main(int argc, char **argv)
 		ifr->func();
 	}
 
+	// Signal ready for requests
+	hostWriteMsg(makeIdent("RDYQ"), 0, nullptr);
+
 	while (true)
 	{
 		// Wait for input
