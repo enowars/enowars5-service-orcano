@@ -341,17 +341,15 @@ void Engine::cmd_inspect()
 	int num_ints = getUInt();
 	int num_floats = getUInt();
 
-	OC_LOG("SPOILER: inspect num_ints=%d, num_floats=%d\n", num_ints, num_floats);
-
 	uint32_t ident = makeIdent("INSQ");
-	int size = sizeof(int) + num_ints * sizeof(int) + num_floats * sizeof(float);
-	OC_LOG("SPOILER: size=%d\n", size);
+	int size = sizeof(int)
+		+ num_ints * sizeof(int)
+		+ num_floats * sizeof(float);
 
 	hostWrite(&ident, sizeof(ident));
 	hostWrite(&size, sizeof(size));
 
 	hostWrite(&num_ints, sizeof(num_ints));
-
 	for (int i = 0; i < num_ints; ++i)
 	{
 		int v = getSInt();
