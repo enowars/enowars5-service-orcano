@@ -1,3 +1,3 @@
 #!/bin/bash
 cd $(dirname $0)
-cp image.dol ../service
+cp image.dol image.map ../service
