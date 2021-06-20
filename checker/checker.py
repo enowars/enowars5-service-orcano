@@ -516,17 +516,23 @@ class OrcanoChecker(BaseChecker):
 	def putnoise(self):
 		self.action_title = "putnoise"
 		if self.variant_id == 0:
-			creds = self.gen_creds()
 			# TODO: Other types of noise.
-			data = [rand_sint() for i in range(1 + secrets.randbelow(20))]
+			nums = [rand_sint() for i in range(1 + secrets.randbelow(20))]
 
+			uid = self.gen_uid()
+			key = self.gen_key()
 			db = {}
-			db["data"] = data
-			db |= self.save_creds(creds)
+			db |= self.save_uid(uid)
+			db |= self.save_key(key)
+			db["data"] = nums
 			self.chain_db = db
 
+			cmds = []
+			cmds += [self.make_user(uid, key)]
+			cmds += self.make_put_data(nums)
+
 			conn = self.begin_conn()
-			result = self.put_data(conn, creds, data)
+			result = self.make_request(conn, cmds)
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("putnoise request error")
@@ -536,20 +542,25 @@ class OrcanoChecker(BaseChecker):
 		self.action_title = "getnoise"
 		if self.variant_id == 0:
 			try:
-				creds = self.load_creds()
-				data = self.chain_db["data"]
+				uid = self.load_uid()
+				key = self.load_key()
+				expected_nums = self.chain_db["data"]
 			except:
 				raise BrokenServiceException("previous putnoise failed")
 
 			conn = self.begin_conn()
-			result = self.get_data(conn, creds, len(data))
+			cmds = []
+			cmds += [self.make_user(uid, key)]
+			cmds += [self.make_cmd("del")]
+			cmds += self.make_get_data(len(expected_nums))
+			result = self.make_request(conn, cmds)
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("getnoise request error")
 
 			assert_equals(
 				tuple(result["out"]),
-				tuple(data),
+				tuple(expected_nums),
 				message="getnoise incorrect data"
 			)
 		else:
