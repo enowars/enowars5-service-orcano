@@ -134,7 +134,7 @@ inline void hostReadMsg(uint32_t *ident, uint32_t *len, void **data)
 		OC_HANG(); \
 	} while (false) \
 
-#if 0
+#if !OC_FINAL
 #define OC_LOG(fmt, ...) \
 	OC_HOST_TEXTMSG("LOGQ", fmt, __VA_ARGS__)
 #else
