@@ -1,5 +1,11 @@
 FROM ghcr.io/enowars/enowars5-service-orcano-dolphin
 
+# Install Python dependencies
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+	python3-pip
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
 # Configure Dolphin
 # Careful: ~ doesn't work here!
 RUN mkdir /root/.dolphin-emu

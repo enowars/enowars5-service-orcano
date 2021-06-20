@@ -9,6 +9,9 @@ import asyncio
 import traceback
 import subprocess
 
+import secrets
+from Crypto.Cipher import ChaCha20
+
 SERVICE_PORT = 53273
 QUEUE_MAX_LEN = 1024
 DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
@@ -87,7 +90,10 @@ class OrcanoFrontend:
 				workers.append(asyncio.create_task(self.handle_dolphin()))
 			done, pending = await asyncio.wait(workers, return_when=asyncio.FIRST_COMPLETED)
 			for d in done: # Trigger exceptions
-				await d
+				try:
+					await d
+				except:
+					traceback.print_exc()
 			print("Workers: {} died".format(len(done)))
 			workers = list(pending)
 
@@ -189,7 +195,69 @@ class OrcanoFrontend:
 
 		class DolphinCommunicationError(Exception): pass
 
-		async def process_request(task):
+		async def process_request(task, persistent):
+			otp = persistent.get("otp", {
+				"uid": None,
+				"storage": b"",
+				"offset": 0,
+			})
+
+			def otp_acquire(uid):
+				if uid == otp["uid"]:
+					return
+
+				otp_path = os.path.join(DATA_DIR, "otp_{:016x}".format(uid))
+
+				# New OTP user. Acquire some secret material.
+				try:
+					with open(otp_path, "rb") as f:
+						otp_secret = bytearray(f.read())
+				except FileNotFoundError:
+					# OTP not enabled for this account
+					otp_authenticated = False
+					otp["uid"] = None
+					otp["storage"] = b""
+					return
+
+				otp_authenticated = False
+				otp["uid"] = uid
+				otp["offset"] = struct.unpack_from(">L", otp_secret, 0x0)[0]
+				gen = ChaCha20.new(key=otp_secret[0x4:0x24], nonce=otp_secret[0x24:0x2c])
+				gen.seek(otp["offset"])
+				otp_storage_size = 32
+				otp["storage"] = gen.encrypt(b"\x00" * otp_storage_size)
+				struct.pack_into(">L", otp_secret, 0x0, otp["offset"] + otp_storage_size)
+
+				with open(otp_path, "wb") as f:
+					f.write(otp_secret)
+			def otp_get_code():
+				if not otp["storage"]:
+					# Not authenticated or out of codes
+					return None
+				return struct.unpack_from(">Q", otp["storage"], 0x0)[0]
+			def otp_advance():
+				if not otp["storage"]:
+					# Not authenticated or out of codes
+					return
+				otp["storage"] = otp["storage"][8:]
+				otp["offset"] += 8
+			def missing_otp_auth(uid):
+				try:
+					with open(os.path.join(DATA_DIR, "otp_{:016x}".format(uid))) as f:
+						pass
+					user_has_otp = True
+				except FileNotFoundError:
+					user_has_otp = False
+
+				# OTP enabled?
+				if not user_has_otp:
+					return False
+
+				# OTP is enabled, authenticated?
+				if otp["uid"] == uid and otp_authenticated:
+					return False
+
+				return True
 			# Send the initial request
 			await dol_timeout(dol_write_msg(b"REQQ", task["data"]))
 
@@ -207,6 +275,10 @@ class OrcanoFrontend:
 
 					uid = struct.unpack_from(">Q", data, 0x0)[0]
 					idx = struct.unpack_from(">L", data, 0x8)[0]
+
+					if missing_otp_auth(uid):
+						await dol_timeout(dol_write_msg(b"GTNA", b"\x00" * 8))
+						continue
 
 					# TODO: Should we check that this user exists here?
 					num_path = os.path.join(DATA_DIR, "num_{:016x}_{:08x}".format(uid, idx))
@@ -236,6 +308,13 @@ class OrcanoFrontend:
 					if num_type not in [0, 1]:
 						raise DolphinCommunicationError("invalid setn number type 0x{:x}".format(num_type))
 
+					# Protect anonymous user
+					if uid == 0 and (idx == 0x20000000 or idx == 0x20000001):
+						continue
+
+					if missing_otp_auth(uid):
+						continue
+
 					# Check for lock
 					lock_path = os.path.join(DATA_DIR, "lock_{:016x}_{:08x}".format(uid, idx))
 					try:
@@ -253,9 +332,15 @@ class OrcanoFrontend:
 					if len(data) != 0xc:
 						raise DolphinCommunicationError("invalid lockn query len 0x{:x}".format(len(data)))
 
-					# TODO: Should we check that this user exists here?
 					uid = struct.unpack_from(">Q", data, 0x0)[0]
 					idx = struct.unpack_from(">L", data, 0x8)[0]
+
+					# Cannot lock numbers on anonymous account
+					if uid == 0:
+						continue
+
+					if missing_otp_auth(uid):
+						continue
 
 					# TODO: This shares code with STNQ
 					lock_path = os.path.join(DATA_DIR, "lock_{:016x}_{:08x}".format(uid, idx))
@@ -276,6 +361,85 @@ class OrcanoFrontend:
 							val = struct.unpack_from(">f", data, 0x4 + i * 4)[0]
 							result += " f{:.9g}".format(val).encode()
 					result += b"\n"
+				elif ident == b"OTIQ":
+					# Init OTP
+					if len(data) != 8:
+						raise DolphinCommunicationError("invalid otp init query len 0x{:x}".format(len(data)))
+					uid = struct.unpack_from(">Q", data, 0x0)[0]
+
+					# Protect anonymous user
+					protected_user = False
+					if uid == 0:
+						protected_user = True
+
+					def check_file_exists(path):
+						try:
+							with open(otp_path, "rb") as f:
+								pass
+							exists = True
+						except FileNotFoundError:
+							exists = False
+						return exists
+
+					# Check for existing OTP or user registration
+					otp_path = os.path.join(DATA_DIR, "otp_{:016x}".format(uid))
+					key0_path = os.path.join(DATA_DIR, "num_{:016x}_20000000".format(uid))
+					key1_path = os.path.join(DATA_DIR, "num_{:016x}_20000001".format(uid))
+					otp_exists = check_file_exists(otp_path)
+					key0_exists = check_file_exists(key0_path)
+					key1_exists = check_file_exists(key1_path)
+
+					if protected_user or otp_exists or key0_exists or key1_exists:
+						# User already exists, refuse enabling OTP
+						resp_data = b"\x00" * (4 + 32 + 8)
+					else:
+						# Init OTP
+						cc_key = secrets.token_bytes(32)
+						cc_nonce = secrets.token_bytes(8)
+						otp_data = b"\x00\x00\x00\x00" + cc_key + cc_nonce
+						with open(otp_path, "wb") as f:
+							f.write(otp_data)
+						# Send response
+						resp_data = b"\x00\x00\x00\x01" + cc_key + cc_nonce
+					await dol_timeout(dol_write_msg(b"OTIA", resp_data))
+				elif ident == b"OTAQ":
+					# Auth OTP
+					if len(data) != 0x10:
+						raise DolphinCommunicationError("invalid otp auth query len 0x{:x}".format(len(data)))
+					uid = struct.unpack_from(">Q", data, 0x0)[0]
+					code = struct.unpack_from(">Q", data, 0x8)[0]
+
+					otp_acquire(uid)
+					expected_code = otp_get_code()
+					if expected_code != code:
+						resp_data = b"\x00\x00\x00\x00"
+					else:
+						otp_authenticated = True
+						resp_data = b"\x00\x00\x00\x01"
+					await dol_timeout(dol_write_msg(b"OTAA", resp_data))
+				elif ident == b"OTGQ":
+					# Get OTP
+					if len(data) != 8:
+						raise DolphinCommunicationError("invalid otp get query len 0x{:x}".format(len(data)))
+					uid = struct.unpack_from(">Q", data, 0x0)[0]
+
+					otp_acquire(uid)
+					next_code = otp_get_code()
+					if next_code != None:
+						next_offset = otp["offset"]
+					else:
+						next_code = 0
+						next_offset = 0
+
+					resp_data = bytearray(0xc)
+					struct.pack_into(">L", resp_data, 0x0, next_offset)
+					struct.pack_into(">Q", resp_data, 0x4, next_code)
+					await dol_timeout(dol_write_msg(b"OTGA", resp_data))
+				elif ident == b"OTNQ":
+					# Next OTP
+					if len(data) != 0:
+						raise DolphinCommunicationError("invalid otp next query len 0x{:x}".format(len(data)))
+					otp_advance()
 				elif ident == b"LOGQ":
 					print(data)
 				elif ident == b"ERRQ":
@@ -284,16 +448,19 @@ class OrcanoFrontend:
 				else:
 					print("DOL bad msg: ident={} data={}".format(ident, data))
 					raise DolphinCommunicationError()
+
+			# Write back session data
+			persistent["otp"] = otp
 			return result
 
 		# Serve requests
 		while True:
-			task = await self.request_queue.get()
+			task, persistent = await self.request_queue.get()
 
 			request_start = datetime.datetime.utcnow()
 			print("Serving request to Dolphin on port {}".format(inst["dol_port"]))
 			try:
-				result = await asyncio.wait_for(process_request(task), MAX_REQUEST_TIME)
+				result = await asyncio.wait_for(process_request(task, persistent), MAX_REQUEST_TIME)
 			except (asyncio.IncompleteReadError, asyncio.TimeoutError, DolphinCommunicationError) as ex:
 				# Dolphin died or timed out
 				print("Request execution failed, traceback:")
@@ -326,7 +493,7 @@ class OrcanoFrontend:
 		await client_tx.drain()
 
 		# TODO: Network timeouts?
-
+		persistent = {}
 		try:
 			while True:
 				client_tx.write(b"> ")
@@ -353,7 +520,7 @@ class OrcanoFrontend:
 				}
 
 				# Submit for processing
-				await self.request_queue.put(task)
+				await self.request_queue.put((task, persistent))
 
 				# Wait for completion
 				result = await task_result_fut

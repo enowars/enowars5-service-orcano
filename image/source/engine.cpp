@@ -66,9 +66,17 @@ void Engine::run(const char *request)
 			free(name_buf);
 
 		// Check for errors
-		if (m_error_text)
+		// SIC: This happens before the OTP invalidation!
+		if (hasError())
 		{
 			break;
+		}
+
+		// Invalidate OTP if necessary
+		if (m_otp_touched)
+		{
+			hostWriteMsg(makeIdent("OTNQ"), 0, nullptr);
+			m_otp_touched = false;
 		}
 
 		// Advance
@@ -120,7 +128,10 @@ void Engine::putStack(StackValue v)
 {
 	if (m_stack_size >= (int)OC_ARRAYSIZE(m_stack))
 	{
-		runtimeError("stack overflow");
+		if (v.type == StackValueType_Float)
+			runtimeError("stack overflow (f%.8g)", v.f);
+		else
+			runtimeError("stack overflow (i%d)", v.i);
 		return;
 	}
 
@@ -424,21 +435,38 @@ void Engine::prepareDefaultArg()
 	m_arg_value.i = 0;
 }
 
+bool Engine::hasError()
+{
+	return m_error_text[0] ? true : false;
+}
+
 const char *Engine::getError()
 {
 	return m_error_text;
 }
 
-void Engine::syntaxError(const char *text)
+void Engine::syntaxError(const char *fmt, ...)
 {
-	if (!m_error_text)
-		m_error_text = text;
+	va_list args;
+	va_start(args, fmt);
+	errorv(fmt, args);
+	va_end(args);
 }
 
-void Engine::runtimeError(const char *text)
+void Engine::runtimeError(const char *fmt, ...)
 {
-	if (!m_error_text)
-		m_error_text = text;
+	va_list args;
+	va_start(args, fmt);
+	errorv(fmt, args);
+	va_end(args);
+}
+
+void Engine::errorv(const char *fmt, va_list args)
+{
+	if (m_error_text[0])
+		return;
+	vsnprintf(m_error_text, OC_ARRAYSIZE(m_error_text), fmt, args);
+	m_error_text[OC_ARRAYSIZE(m_error_text) - 1] = '\0';
 }
 
 void Engine::dumpStack(char *buffer, int size)
@@ -489,9 +517,9 @@ char *processRequest(const char *request_data)
 	Engine e;
 	e.run(request_data);
 
-	const char *err_text = e.getError();
-	if (err_text)
+	if (e.hasError())
 	{
+		const char *err_text = e.getError();
 		const char *err_prefix = "error: ";
 		char *out = (char *)malloc(strlen(err_prefix) + strlen(err_text) + 1);
 		out[0] = '\0';

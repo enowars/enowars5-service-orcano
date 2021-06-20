@@ -25,6 +25,10 @@ const Engine::CommandInfo Engine::s_commands[] = {
 	{ "setn", &Engine::cmd_setn },
 	{ "lockn", &Engine::cmd_lockn },
 
+	{ "otp_init", &Engine::cmd_otp_init },
+	{ "otp_auth", &Engine::cmd_otp_auth },
+	{ "otp_sync", &Engine::cmd_otp_sync },
+
 	{ "inspect", &Engine::cmd_inspect },
 
 #if !OC_FINAL
@@ -334,6 +338,130 @@ void Engine::cmd_lockn()
 	lockn_buffer.uid1 = m_user_uid1;
 
 	hostWriteMsg(makeIdent("LKNQ"), sizeof(lockn_buffer), &lockn_buffer);
+}
+
+void Engine::cmd_otp_init()
+{
+	struct __attribute__((__packed__))
+	{
+		int uid0;
+		int uid1;
+	} otp_init_buffer;
+
+	otp_init_buffer.uid0 = getSInt();
+	otp_init_buffer.uid1 = getSInt();
+
+	hostWriteMsg(makeIdent("OTIQ"), sizeof(otp_init_buffer), &otp_init_buffer);
+
+	uint32_t resp_ident, resp_size;
+	void *resp_data;
+	hostReadMsg(&resp_ident, &resp_size, &resp_data);
+
+	if (resp_ident != makeIdent("OTIA") || resp_size != 0x2c)
+	{
+		OC_ERR("bad answer for otp_init command");
+	}
+
+	// success, sec0-7, nonce0-1
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x00));
+	
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x04));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x08));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x0c));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x10));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x14));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x18));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x1c));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x20));
+
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x24));
+	putInt(*(int32_t *)((uint8_t *)resp_data + 0x28));
+}
+
+void Engine::cmd_otp_auth()
+{
+	int uid0 = getSInt();
+	int uid1 = getSInt();
+	int otp0 = getSInt();
+	int otp1 = getSInt();
+
+	struct __attribute__((__packed__))
+	{
+		int uid0;
+		int uid1;
+		int otp0;
+		int otp1;
+	} otp_auth_buffer;
+
+	otp_auth_buffer.uid0 = uid0;
+	otp_auth_buffer.uid1 = uid1;
+	otp_auth_buffer.otp0 = otp0;
+	otp_auth_buffer.otp1 = otp1;
+
+	hostWriteMsg(makeIdent("OTAQ"), sizeof(otp_auth_buffer), &otp_auth_buffer);
+
+	uint32_t resp_ident, resp_size;
+	void *resp_data;
+	hostReadMsg(&resp_ident, &resp_size, &resp_data);
+
+	if (resp_ident != makeIdent("OTAA") || resp_size != 0x4)
+	{
+		OC_ERR("bad answer for otp_auth command");
+	}
+
+	int success = *(int32_t *)resp_data;
+	if (success)
+	{
+		putInt(1);
+		m_user_authenticated = true;
+		m_user_uid0 = uid0;
+		m_user_uid1 = uid1;
+	}
+	else
+	{
+		putInt(0);
+	}
+
+	m_otp_touched = true;
+}
+
+void Engine::cmd_otp_sync()
+{
+	int uid0 = getSInt();
+	int uid1 = getSInt();
+
+	struct __attribute__((__packed__))
+	{
+		int uid0;
+		int uid1;
+	} otp_sync_buffer;
+
+	otp_sync_buffer.uid0 = uid0;
+	otp_sync_buffer.uid1 = uid1;
+
+	hostWriteMsg(makeIdent("OTGQ"), sizeof(otp_sync_buffer), &otp_sync_buffer);
+
+	uint32_t resp_ident, resp_size;
+	void *resp_data;
+	hostReadMsg(&resp_ident, &resp_size, &resp_data);
+
+	if (resp_ident != makeIdent("OTGA") || resp_size != 0xc)
+	{
+		OC_ERR("bad answer for otp_sync command");
+	}
+
+	// idx, otp0, otp1
+	int resp_idx = *(int32_t *)((uint8_t *)resp_data + 0x0);
+	int resp_otp0 = *(int32_t *)((uint8_t *)resp_data + 0x4);
+	int resp_otp1 = *(int32_t *)((uint8_t *)resp_data + 0x8);
+
+	// Scramble otp0/otp1
+	// TODO
+	putInt(resp_otp0);
+	putInt(resp_otp1);
+	putInt(resp_idx);
+
+	m_otp_touched = true;
 }
 
 void Engine::cmd_inspect()

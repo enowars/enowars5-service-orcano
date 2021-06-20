@@ -4,6 +4,7 @@
 #include "host.h"
 #include "util.h"
 
+#include <cstdarg>
 #include <cstdlib>
 #include <cstring>
 
@@ -122,6 +123,7 @@ class Engine
 {
 public:
 	void run(const char *request);
+	bool hasError();
 	const char *getError();
 
 	void dumpStack(char *buffer, int size);
@@ -154,8 +156,9 @@ private:
 	void prepareDefaultArg();
 
 	// Error handling
-	void syntaxError(const char *text);
-	void runtimeError(const char *text);
+	void syntaxError(const char *fmt, ...);
+	void runtimeError(const char *fmt, ...);
+	void errorv(const char *fmt, va_list args);
 
 	// Commands
 	void cmd_int();
@@ -178,6 +181,10 @@ private:
 	void cmd_getn();
 	void cmd_setn();
 	void cmd_lockn();
+
+	void cmd_otp_init();
+	void cmd_otp_auth();
+	void cmd_otp_sync();
 
 	void cmd_inspect();
 
@@ -208,8 +215,10 @@ private:
 	int m_user_uid0 = 0;
 	int m_user_uid1 = 0;
 
+	bool m_otp_touched = false;
+
 	// Error handling
-	const char *m_error_text = nullptr;
+	char m_error_text[256] = "";
 
 	// Command definitions
 	struct CommandInfo
