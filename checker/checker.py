@@ -656,11 +656,12 @@ class OrcanoChecker(BaseChecker):
 			# TODO
 		elif self.variant_id == 12:
 			self.action_title = "havoc user"
-			creds = self.gen_creds()
-			creds_wrong = (creds[0], creds[1], rand_sint(), rand_sint())
+			uid = self.gen_uid()
+			key = self.gen_key()
+			key_wrong = (rand_sint(), rand_sint())
 			cmds = []
-			cmds.append(self.make_user(creds))
-			cmds.append(self.make_user(creds_wrong))
+			cmds.append(self.make_user(uid, key))
+			cmds.append(self.make_user(uid, key_wrong))
 			self.single_request_expect(cmds, [0, 1])
 		elif self.variant_id == 13:
 			self.action_title = "havoc getn"
