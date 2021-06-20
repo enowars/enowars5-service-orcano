@@ -12,6 +12,7 @@
 #include "ug.h"
 #endif
 
+#if OC_IDENT_INLINE
 constexpr uint32_t makeIdent(const char *text)
 {
 	char a = text[0];
@@ -20,6 +21,9 @@ constexpr uint32_t makeIdent(const char *text)
 	char d = text[3];
 	return (a << 24 | b << 16 | c << 8 | d);
 }
+#else
+uint32_t makeIdent(const char *text);
+#endif
 
 constexpr int kGeckoExiChan = 1;
 
