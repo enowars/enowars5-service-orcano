@@ -8,6 +8,7 @@ services:
       - ./data:/data # TODO: Assign final directory
     ports:
       - 53273:53273
+    mem_limit: 1G
 #      - 55020:55020 # for debugging
     restart: unless-stopped
 #    cap_add:

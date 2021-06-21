@@ -12,7 +12,7 @@ services:
      - MONGO_PORT=27017
      - MONGO_USER=orcano_checker
      - MONGO_PASSWORD=orcano_checker
-
+    mem_limit: 1G
   # The python checkerlib requires a mongo db!
   orcano-mongo:
     image: mongo
@@ -21,3 +21,4 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: orcano_checker
       MONGO_INITDB_ROOT_PASSWORD: orcano_checker
+    mem_limit: 1G
