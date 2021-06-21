@@ -60,17 +60,16 @@ void CustomArgParser::setQuantType(int type)
 void CustomArgParser::setArgString()
 {
 	const char *arg_end = m_engine->m_arg_text + strlen(m_engine->m_arg_text);
-	const char *arg_start = m_engine->m_arg_text;
+	const char *arg_start = m_engine->m_arg_text + 1;
 	if (arg_end <= arg_start)
 	{
 		// Empty string
-		arg_end = arg_start;
+		arg_start = arg_end;
 		setText(arg_start, arg_end);
 		return;
 	}
 
 	setText(arg_start, arg_end);
-	getChar(); // Skip arg seperator
 }
 
 void CustomArgParser::setText(const char *start, const char *end)
