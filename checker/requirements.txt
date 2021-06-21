@@ -1,5 +1,4 @@
-enochecker>=0.4.0
-eventlet==0.30.2
-gunicorn[eventlet]
+enochecker==0.4.2
+gunicorn[gevent]
 dnspython<2
 pycryptodome==3.10.1
