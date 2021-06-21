@@ -469,6 +469,11 @@ void Engine::errorv(const char *fmt, va_list args)
 	m_error_text[OC_ARRAYSIZE(m_error_text) - 1] = '\0';
 }
 
+void Engine::print(const char *text)
+{
+	hostWriteMsg(makeIdent("PRTQ"), strlen(text), text);
+}
+
 void Engine::dumpStack(char *buffer, int size)
 {
 	int left = size;

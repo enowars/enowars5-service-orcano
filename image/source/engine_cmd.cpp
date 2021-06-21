@@ -3,36 +3,48 @@
 #include "engine.h"
 #include "host.h"
 
+#if !OC_MINIMAL_DOCS
+#define OC_DEFINE_CMD(name, help) \
+	{ #name, &Engine::cmd_##name, help }
+#else
+#define OC_DEFINE_CMD(name, help) \
+	{ #name, &Engine::cmd_##name }
+#endif
+
 const Engine::CommandInfo Engine::s_commands[] = {
-	{ "int", &Engine::cmd_int },
-	{ "float", &Engine::cmd_float },
-	{ "dup", &Engine::cmd_dup },
-	{ "rpt", &Engine::cmd_rpt },
-	{ "del", &Engine::cmd_del },
-	{ "drop", &Engine::cmd_drop },
-	{ "stack", &Engine::cmd_stack },
+	OC_DEFINE_CMD(int,   "read/write integer"),
+	OC_DEFINE_CMD(float, "read/write float"),
+	OC_DEFINE_CMD(dup,   "repeat single"),
+	OC_DEFINE_CMD(rpt,   "repeat multiple"),
+	OC_DEFINE_CMD(del,   "delete single"),
+	OC_DEFINE_CMD(drop,  "repeat multiple"),
+	OC_DEFINE_CMD(stack, "read/write stack"),
 
-	{ "addi", &Engine::cmd_addi },
-	{ "addf", &Engine::cmd_addf },
-	{ "muli", &Engine::cmd_muli },
-	{ "mulf", &Engine::cmd_mulf },
+	OC_DEFINE_CMD(addi, "add integers"),
+	OC_DEFINE_CMD(addf, "add floats"),
+	OC_DEFINE_CMD(muli, "multiply integers"),
+	OC_DEFINE_CMD(mulf, "multiply floats"),
 
-	{ "poly", &Engine::cmd_poly },
-	{ "weight", &Engine::cmd_weight },
+	OC_DEFINE_CMD(poly,   "evaluate polynomial"),
+	OC_DEFINE_CMD(weight, "evaluate linear combination"),
 
-	{ "user", &Engine::cmd_user },
-	{ "getn", &Engine::cmd_getn },
-	{ "setn", &Engine::cmd_setn },
-	{ "lockn", &Engine::cmd_lockn },
+	OC_DEFINE_CMD(user,  "login/register as user"),
+	OC_DEFINE_CMD(getn,  "get saved number"),
+	OC_DEFINE_CMD(setn,  "set saved number"),
+	OC_DEFINE_CMD(lockn, "lock saved number from writing"),
 
-	{ "otp_init", &Engine::cmd_otp_init },
-	{ "otp_auth", &Engine::cmd_otp_auth },
-	{ "otp_sync", &Engine::cmd_otp_sync },
+	OC_DEFINE_CMD(otp_init, "register as user with one-time passwords"),
+	OC_DEFINE_CMD(otp_auth, "login as user with one-time passwords"),
+	OC_DEFINE_CMD(otp_sync, "synchronize as user with one-time passwords"),
 
-	{ "inspect", &Engine::cmd_inspect },
+	OC_DEFINE_CMD(inspect, "print integers/floats"),
+	OC_DEFINE_CMD(print,   "print text"),
+#if !OC_MINIMAL_DOCS
+	OC_DEFINE_CMD(help,    "print help"),
+#endif
 
 #if !OC_FINAL
-	{ "dbg_fail", &Engine::cmd_dbg_fail },
+	OC_DEFINE_CMD(dbg_fail, "force a fatal error"),
 #endif
 
 	{ nullptr, nullptr }
@@ -141,9 +153,8 @@ void Engine::cmd_weight()
 
 	// Init arg data
 	// TODO: This will change when we do the arg parsing refactor
-	const char *arg_end = m_arg_text + strlen(m_arg_text);
-	const char *arg_start = m_arg_text + 1;
-	p.setText(arg_start, arg_end);
+	p.setArgString();
+
 	// Draw remaining args from stack
 	m_arg_text = "";
 
@@ -491,6 +502,60 @@ void Engine::cmd_inspect()
 
 	hostFlush();
 }
+
+void Engine::cmd_print()
+{
+	CustomArgParser p(this);
+	p.setArgString();
+	print(p.getText());
+}
+
+#if !OC_MINIMAL_DOCS
+void Engine::cmd_help()
+{
+	CustomArgParser p(this);
+	p.setArgString();
+
+	if (p.getRemaining() > 0)
+	{
+		// Specific command help
+		// TODO: Refactor this into a function
+		const CommandInfo *matching_ci = nullptr;
+		for (const CommandInfo *ci = s_commands; ci->name; ++ci)
+		{
+			if (!strcmp(ci->name, p.getText()))
+			{
+				matching_ci = ci;
+				break;
+			}
+		}
+		if (!matching_ci)
+		{
+			print("unknown command");
+			return;
+		}
+		print(matching_ci->help);
+	}
+	else
+	{
+		// General help
+		print("command syntax is <mnemonic>[:<imm1>:<imm2>:<...>]");
+		print("unspecified arguments are drawn from the stack");
+		print("available immediates:");
+		print("  i<int>");
+		print("  f<float>");
+		print("  s");
+		print("  p<base64 paired>");
+		print("some commands may have custom argument formats");
+		print("use help:<mnemonic> for help for specific commands");
+		print("available commands:");
+		for (const CommandInfo *ci = s_commands; ci->name; ++ci)
+		{
+			print(ci->name);
+		}
+	}
+}
+#endif
 
 #if !OC_FINAL
 void Engine::cmd_dbg_fail()

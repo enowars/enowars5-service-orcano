@@ -36,78 +36,28 @@ class Engine;
 class CustomArgParser
 {
 public:
-	CustomArgParser(Engine *engine)
-	{
-		m_engine = engine;
-	}
+	CustomArgParser(Engine *engine);
+	~CustomArgParser();
 
-	~CustomArgParser()
-	{
-		if (m_gqr_dirty)
-		{
-			set_gqr2(m_gqr_saved);
-		}
-	}
+	void setArgString();
+	void setText(const char *start, const char *end);
 
-	int getSeek()
-	{
-		return m_seek;
-	}
+	int getSeek();
+	int getSize();
+	int getRemaining();
 
-	int getSize()
-	{
-		return m_size;
-	}
-
-	int getRemaining()
-	{
-		return m_size - m_seek;
-	}
-
-	void setText(const char *start, const char *end);	
-
-	void setQuantScale(int scale)
-	{
-		setQuantDirty();
-		quant_set_scale(scale);
-	}
-
-	void setQuantType(int type)
-	{
-		setQuantDirty();
-		quant_set_type(type);
-		switch (type)
-		{
-		case QuantType_Float:
-			m_gqr_width = 4;
-			break;
-		case QuantType_UInt16:
-		case QuantType_Int16:
-			m_gqr_width = 2;
-			break;
-		case QuantType_UInt8:
-		case QuantType_Int8:
-			m_gqr_width = 1;
-			break;
-		default:
-			OC_ERR("bad gqr type");
-			break;
-		}
-	}
+	void setQuantScale(int scale);
+	void setQuantType(int type);
 
 	float getQuant();
+	char getChar();
+	const char *getText();
 
 	void decompressBase64();
 
 private:
-	void setQuantDirty()
-	{
-		if (!m_gqr_dirty)
-		{
-			m_gqr_dirty = true;
-			m_gqr_saved = get_gqr2();
-		}
-	}
+
+	void setQuantDirty();
 
 	Engine *m_engine;
 	int m_seek;
@@ -160,6 +110,8 @@ private:
 	void runtimeError(const char *fmt, ...);
 	void errorv(const char *fmt, va_list args);
 
+	void print(const char *text);
+
 	// Commands
 	void cmd_int();
 	void cmd_float();
@@ -187,6 +139,10 @@ private:
 	void cmd_otp_sync();
 
 	void cmd_inspect();
+	void cmd_print();
+#if !OC_MINIMAL_DOCS
+	void cmd_help();
+#endif
 
 #if !OC_FAIL
 	void cmd_dbg_fail();
@@ -225,6 +181,9 @@ private:
 	{
 		const char *name = nullptr;
 		void (Engine::*function)() = nullptr;
+#if !OC_MINIMAL_DOCS
+		const char *help = nullptr;
+#endif
 	};
 	
 	const static CommandInfo s_commands[];

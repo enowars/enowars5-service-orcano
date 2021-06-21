@@ -352,6 +352,8 @@ class OrcanoChecker(BaseChecker):
 		for prefix, suffix in output[:-1]:
 			if prefix == "inspect":
 				mid.append((prefix, parse_nums(suffix)))
+			elif prefix == "print":
+				mid.append((prefix, suffix[1:]))
 			else:
 				raise BrokenServiceException("Inner output line was invalid")
 

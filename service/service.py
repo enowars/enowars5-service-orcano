@@ -3,6 +3,7 @@
 import sys
 import os
 import struct
+import string
 import datetime
 import asyncio
 
@@ -440,6 +441,10 @@ class OrcanoFrontend:
 					if len(data) != 0:
 						raise DolphinCommunicationError("invalid otp next query len 0x{:x}".format(len(data)))
 					otp_advance()
+				elif ident == b"PRTQ":
+					result += b"print: "
+					result += bytes(filter(lambda c: c in string.printable.encode(), data))
+					result += b"\n"
 				elif ident == b"LOGQ":
 					print(data)
 				elif ident == b"ERRQ":
