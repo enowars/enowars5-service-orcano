@@ -494,14 +494,18 @@ class OrcanoFrontend:
 			self.request_queue.task_done()
 
 	async def handle_connection(self, client_rx, client_tx):
-		client_tx.write(b"Hey! Listen!\n")
+		client_tx.write(b"Hey!\a")
 		await client_tx.drain()
+		await asyncio.sleep(2.0)
+		client_tx.write(b" Listen!\a\n")
+		await client_tx.drain()
+		await asyncio.sleep(2.0)
 
 		# TODO: Network timeouts?
 		persistent = {}
 		try:
 			while True:
-				client_tx.write(b"> ")
+				client_tx.write(b"\a> ")
 				await client_tx.drain()
 				line = await client_rx.readuntil(b"\n")
 
