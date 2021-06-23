@@ -46,7 +46,7 @@ def secret_shuffle(l):
 		t = l[j]
 		l[j] = l[i]
 		l[i] = t
-PROMPT_TEXT = "\a> "
+PROMPT_TEXT = ">\a "
 
 class OrcanoChecker(BaseChecker):
 	flag_variants = 2
