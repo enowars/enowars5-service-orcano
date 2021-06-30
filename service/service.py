@@ -21,12 +21,17 @@ DATA_DIR = "/data"
 WORKER_COUNT = 2
 DATA_CLEANUP_EXPIRY_TIME = 35 * 60 # 35 minutes ~= 3 min/round * 10 rounds + margin
 DATA_CLEANUP_CYCLE_TIME = 10 * 60 # guarantees max age 45 minutes
+LOG_DEBUG = False
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
 MAX_REQUEST_TIME = 0.25
 DOL_TIMEOUT = 2.0 # timeout for comms with Dolphin before abort & restart
 DOL_STARTUP_TIME = 20.0 # how long to wait for Dolphin to start up in seconds
 DOL_STARTUP_INTERVAL = 0.05 # wait time between successive attempts to get to Dolphin
+
+def log_debug(text):
+	if LOG_DEBUG:
+		print(text)
 
 async def imm_error(t):
 	try:
@@ -176,17 +181,16 @@ class OrcanoFrontend:
 			msg_buffer[0:4] = ident
 			msg_buffer[4:8] = struct.pack(">L", len(data))
 			msg_buffer[8:] = data
-			print("Sending msg: {}".format(msg_buffer))
+			log_debug("Send msg: {}".format(msg_buffer))
 			inst["dol_tx"].write(msg_buffer)
 			await inst["dol_tx"].drain()
 
 		async def dol_read_msg():
 			msg_header = await inst["dol_rx"].readexactly(4 + 4)
-			print("Got msg header: {}".format(msg_header))
 			ident = msg_header[0:4]
 			size = struct.unpack(">L", msg_header[4:8])[0]
 			data = await inst["dol_rx"].readexactly(size)
-			print("Got msg data: {}".format(data))
+			log_debug("Recv msg: {}".format(msg_header + data))
 			return ident, data
 
 		async def dol_timeout(coro):
@@ -446,7 +450,7 @@ class OrcanoFrontend:
 					result += bytes(filter(lambda c: c in string.printable.encode(), data))
 					result += b"\n"
 				elif ident == b"LOGQ":
-					print(data)
+					print("DOL log: {}".format(data))
 				elif ident == b"ERRQ":
 					print("DOL reported error: {}".format(data))
 					raise DolphinCommunicationError()
@@ -463,7 +467,7 @@ class OrcanoFrontend:
 			task, persistent = await self.request_queue.get()
 
 			request_start = datetime.datetime.utcnow()
-			print("Serving request to Dolphin on port {}".format(inst["dol_port"]))
+			print("Serving request to Dolphin on port {}: {}".format(inst["dol_port"], bytes(task["data"])))
 			try:
 				result = await asyncio.wait_for(process_request(task, persistent), MAX_REQUEST_TIME)
 			except (asyncio.IncompleteReadError, asyncio.TimeoutError, DolphinCommunicationError) as ex:
@@ -487,7 +491,7 @@ class OrcanoFrontend:
 			# TODO: Should probably get rid of this overhead for final
 			request_end = datetime.datetime.utcnow()
 			request_duration = request_end - request_start
-			print("Request took {}us".format(request_duration / datetime.timedelta(microseconds=1)))
+			print("Request took {}us: {}".format(request_duration / datetime.timedelta(microseconds=1), bytes(result)))
 
 			# Return the result
 			task["result_fut"].set_result(result)
