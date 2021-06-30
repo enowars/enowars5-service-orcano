@@ -254,9 +254,14 @@ class OrcanoChecker(BaseChecker):
 
 	def begin_conn(self):
 		conn = self.connect()
+
+		# Reconfigure timeouts to actually use all the time we are alotted.
+		def timeout_fun():
+			return max(1, getattr(self, "timeout", 30) - self.time_running - 1)
+		conn.timeout_fun = timeout_fun
+
 		welcome = conn.read_until(PROMPT_TEXT.encode())
 		if not welcome:
-			self.debug("read_until welcome remainder: ", conn.read())
 			raise BrokenServiceException("read_until welcome timeout")
 		self.debug("begin_conn: Got welcome: {}".format(welcome))
 		# TODO: Test welcome text
