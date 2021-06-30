@@ -6,6 +6,7 @@ from enochecker.utils import SimpleSocket, assert_equals, assert_in
 import secrets
 import re
 import struct
+import base64
 
 from Crypto.Cipher import ChaCha20
 
@@ -48,6 +49,19 @@ def secret_shuffle(l):
 		l[i] = t
 PROMPT_TEXT = "> "
 
+def make_paired(vals):
+	# TODO: handle quantized floats maybe
+	if not all([-32767 <= v and v <= 32767 for v in vals]):
+		return None
+
+	paired_data = bytearray(1 + len(vals) * 2)
+	struct.pack_into("b", paired_data, 0, 0) # exponent
+	for i, v in enumerate(vals):
+		struct.pack_into(">h", paired_data, 1 + i * 2, v)
+	paired_b64 = base64.b64encode(paired_data).decode()
+	paired_text = "p{}".format(paired_b64)
+	return paired_text
+
 class OrcanoChecker(BaseChecker):
 	flag_variants = 2
 	noise_variants = 1
@@ -89,11 +103,18 @@ class OrcanoChecker(BaseChecker):
 			if arg_type in ["int", "float"] and rand_bool():
 				# Prefix
 				if arg_type == "int":
-					base = secrets.choice(["dec", "hex"])
-					if base == "dec":
+					available_modes = ["dec", "hex"]
+					# Quantizable?
+					if arg <= 32767 and arg >= -32767:
+						available_modes += ["paired"]
+
+					mode = secrets.choice(available_modes)
+					if mode == "dec":
 						out_cmds.append("int:i{}".format(arg))
-					elif base == "hex":
+					elif mode == "hex":
 						out_cmds.append("int:i{}".format(hex(arg)))
+					elif mode == "paired":
+						out_cmds.append("int:{}".format(make_paired([arg])))
 					else:
 						assert(False)
 				elif arg_type == "float":
@@ -104,6 +125,16 @@ class OrcanoChecker(BaseChecker):
 			else:
 				# Inplace
 				out_final_args.append(arg)
+
+		# Remove random amount of trailing stack arg specifiers
+		stack_suffix_len = 0
+		for a in reversed(out_final_args):
+			if a != "s":
+				break
+			stack_suffix_len += 1
+		stack_suffix_len_trim = secrets.randbelow(stack_suffix_len + 1)
+		if stack_suffix_len_trim > 0:
+			out_final_args = out_final_args[:-stack_suffix_len_trim]
 
 		out_cmds.reverse()
 		out_cmds.append(self.make_cmd(cmd, out_final_args))
@@ -320,7 +351,7 @@ class OrcanoChecker(BaseChecker):
 			for num_text in suffix.strip().split(" "):
 				if len(num_text) == 0:
 					raise BrokenServiceException("Bad output line spacing")
-				
+
 				type_char = num_text[0]
 				if type_char == "i":
 					try:
