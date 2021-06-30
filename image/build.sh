@@ -6,3 +6,4 @@ MSYS2_ARG_CONV_EXCL="*" docker cp dummy:/image/image.dol ./image.dol
 MSYS2_ARG_CONV_EXCL="*" docker cp dummy:/image/image.elf ./image.elf
 MSYS2_ARG_CONV_EXCL="*" docker cp dummy:/image/image.map ./image.map
 docker rm -fv dummy
+python convert_map.py image.map
