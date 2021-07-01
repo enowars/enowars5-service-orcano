@@ -265,21 +265,21 @@ class OrcanoChecker(BaseChecker):
 
 		# Generate next OTP
 		gen = ChaCha20.new(key=otp["otp_key"], nonce=otp["otp_nonce"])
-		gen.seek(sync_index)
+		gen.seek(sync_index * 8)
 		prev_code0, prev_code1 = struct.unpack_from(">ll", gen.encrypt(b"\x00" * 8), 0x0)
 
 		# Validate previous code
 		if sync_code0 != prev_code0 or sync_code1 != prev_code1:
 			raise BrokenServiceException("otp_sync bad code")
 
-		otp["index"] = sync_index + 8
+		otp["index"] = sync_index + 1
 
 	def make_otp_auth(self, uid, otp):
 		# Generate next OTP
 		gen = ChaCha20.new(key=otp["otp_key"], nonce=otp["otp_nonce"])
-		gen.seek(otp["index"])
+		gen.seek(otp["index"] * 8)
 		next_code0, next_code1 = struct.unpack_from(">ll", gen.encrypt(b"\x00" * 8), 0x0)
-		otp["index"] += 8
+		otp["index"] += 1
 
 		return self.make_cmd("otp_auth", [uid[0], uid[1], next_code0, next_code1])
 
@@ -414,7 +414,7 @@ class OrcanoChecker(BaseChecker):
 	def single_request_expect(self, cmds, expect_out, expect_mid=[]):
 		r = self.single_request(cmds)
 		if not r["ok"]:
-			self.debug("{}: expected OK, got error {}".format(r["err"]))
+			self.debug("{}: expected OK, got error {}".format(self.action_title, r["err"]))
 			raise BrokenServiceException("{}: unexpected error".format(self.action_title))
 		if tuple(r["out"]) != tuple(expect_out):
 			self.debug("{}: expected {}, got {}".format(self.action_title, tuple(expect_out), tuple(r["out"])))

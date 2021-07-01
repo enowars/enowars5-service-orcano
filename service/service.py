@@ -228,10 +228,10 @@ class OrcanoFrontend:
 				otp["uid"] = uid
 				otp["offset"] = struct.unpack_from(">L", otp_secret, 0x0)[0]
 				gen = ChaCha20.new(key=otp_secret[0x4:0x24], nonce=otp_secret[0x24:0x2c])
-				gen.seek(otp["offset"])
+				gen.seek(otp["offset"] * 8)
 				otp_storage_size = 32
 				otp["storage"] = gen.encrypt(b"\x00" * otp_storage_size)
-				struct.pack_into(">L", otp_secret, 0x0, otp["offset"] + otp_storage_size)
+				struct.pack_into(">L", otp_secret, 0x0, otp["offset"] + (otp_storage_size // 8))
 
 				with open(otp_path, "wb") as f:
 					f.write(otp_secret)
@@ -245,7 +245,7 @@ class OrcanoFrontend:
 					# Not authenticated or out of codes
 					return
 				otp["storage"] = otp["storage"][8:]
-				otp["offset"] += 8
+				otp["offset"] += 1
 			def missing_otp_auth(uid):
 				try:
 					with open(os.path.join(DATA_DIR, "otp_{:016x}".format(uid))) as f:

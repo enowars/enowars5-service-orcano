@@ -23,7 +23,7 @@ def main():
 		otp_nonce += struct.pack(">l", s)
 
 	gen = ChaCha20.new(key=otp_key, nonce=otp_nonce)
-	gen.seek(otp_sync[2])
+	gen.seek(otp_sync[2] * 8)
 	prev_otp0, prev_otp1 = struct.unpack_from(">ll", gen.encrypt(b"\x00" * 8), 0x0)
 	if prev_otp0 != otp_sync[0] or prev_otp1 != otp_sync[1]:
 		print("validation mismatch")
