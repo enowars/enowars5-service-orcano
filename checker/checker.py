@@ -414,6 +414,7 @@ class OrcanoChecker(BaseChecker):
 	def single_request_expect(self, cmds, expect_out, expect_mid=[]):
 		r = self.single_request(cmds)
 		if not r["ok"]:
+			self.debug("{}: expected OK, got error {}".format(r["err"]))
 			raise BrokenServiceException("{}: unexpected error".format(self.action_title))
 		if tuple(r["out"]) != tuple(expect_out):
 			self.debug("{}: expected {}, got {}".format(self.action_title, tuple(expect_out), tuple(r["out"])))
@@ -691,7 +692,21 @@ class OrcanoChecker(BaseChecker):
 			self.single_request_expect(cmds, [y])
 		elif self.variant_id == 11:
 			self.action_title = "havoc weight"
-			# TODO
+			count = rand_uint(10) + 1
+			coeffs = [rand_sint(2**4) for _ in range(count)]
+			factors = [rand_float(2**6, 2**5) for _ in range(count)]
+			expected = sum([c * f for c, f in zip(coeffs, factors)])
+
+			weight_data = bytearray(len(factors))
+			for i, f in enumerate(factors):
+				struct.pack_into("b", weight_data, i, int(f * (2**6)))
+			weight_text = base64.b64encode(weight_data).decode()
+
+			cmds = []
+			for c in reversed(coeffs):
+				cmds += self.make_cmd_rand("float", [c])
+			cmds += [self.make_cmd("weight", [weight_text])]
+			self.single_request_expect(cmds, [expected])
 		elif self.variant_id == 12:
 			self.action_title = "havoc user"
 			uid = self.gen_uid()
