@@ -379,7 +379,7 @@ class OrcanoChecker(BaseChecker):
 			out_data = parse_nums(rl_suffix)
 		elif rl_prefix == "error":
 			success = False
-			err_data = rl_suffix
+			err_data = rl_suffix.strip()
 		else:
 			raise BrokenServiceException("Last output line was invalid")
 
@@ -415,7 +415,11 @@ class OrcanoChecker(BaseChecker):
 		r = self.single_request(cmds)
 		if not r["ok"]:
 			self.debug("{}: expected OK, got error {}".format(self.action_title, r["err"]))
-			raise BrokenServiceException("{}: unexpected error".format(self.action_title))
+			if r["err"] == "timeout":
+				fail_type = "timeout"
+			else:
+				fail_type = "error"
+			raise BrokenServiceException("{}: unexpected {}".format(self.action_title, fail_type))
 		if tuple(r["out"]) != tuple(expect_out):
 			self.debug("{}: expected {}, got {}".format(self.action_title, tuple(expect_out), tuple(r["out"])))
 			raise BrokenServiceException("{}: unexpected result".format(self.action_title))
@@ -429,7 +433,11 @@ class OrcanoChecker(BaseChecker):
 			raise BrokenServiceException("{}: unexpected success", self.action_title)
 		if expect_err != None and r["err"] != expect_err:
 			self.debug("{}: expected {}, got {}".format(self.action_title, expect_err, r["err"]))
-			raise BrokenServiceException("{}: unexpected kind of error".format(self.action_title))
+			if r["err"] == "timeout":
+				fail_type = "timeout"
+			else:
+				fail_type = "kind of error"
+			raise BrokenServiceException("{}: unexpected {}".format(self.action_title, fail_type))
 		if tuple(r["mid"]) != tuple(expect_mid):
 			self.debug("{}: expected mid {}, got mid {}".format(self.action_title, tuple(expect_mid), tuple(r["mid"])))
 			raise BrokenServiceException("{}: unexpected output".format(self.action_title))
