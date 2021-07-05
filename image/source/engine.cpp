@@ -47,7 +47,7 @@ void Engine::run(const char *request)
 		if (arg_sep)
 		{
 			int name_len = arg_sep - buf;
-			char *name_buf = (char *)malloc(name_len + 1);
+			name_buf = (char *)malloc(name_len + 1);
 			memcpy(name_buf, buf, name_len);
 			name_buf[name_len] = '\0';
 			name = name_buf;
@@ -353,6 +353,7 @@ void Engine::prepareNextArg()
 		// One byte for scale, following are pairs for entries
 		if (b64_len < 3 || (b64_len - 1) % sizeof(int16_t) != 0)
 		{
+			free(b64_data);
 			syntaxError("invalid argument: bad paired len");
 			prepareDefaultArg();
 			return;

@@ -387,6 +387,8 @@ void Engine::cmd_otp_init()
 
 	putInt(*(int32_t *)((uint8_t *)resp_data + 0x24));
 	putInt(*(int32_t *)((uint8_t *)resp_data + 0x28));
+
+	free(resp_data);
 }
 
 void Engine::cmd_otp_auth()
@@ -432,6 +434,8 @@ void Engine::cmd_otp_auth()
 	{
 		putInt(0);
 	}
+	
+	free(resp_data);
 
 	m_otp_touched = true;
 }
@@ -471,6 +475,8 @@ void Engine::cmd_otp_sync()
 	putInt(resp_otp0);
 	putInt(resp_otp1);
 	putInt(resp_idx);
+	
+	free(resp_data);
 
 	m_otp_touched = true;
 }
