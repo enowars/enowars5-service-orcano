@@ -1,4 +1,4 @@
-version: '3'
+version: '2.3'
 
 services:
   orcano:
@@ -10,5 +10,15 @@ services:
       - 53273:53273
 #      - 55020:55020 # for debugging
     restart: unless-stopped
+    # Resource limits
+    mem_limit: 1G
+    memswap_limit: 2G
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+      nproc:
+        soft: 4000
+        hard: 4000
 #    cap_add:
 #      - sys_admin # for perf
