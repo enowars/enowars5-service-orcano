@@ -19,8 +19,8 @@ DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
 IMAGE_PATH = "./image.dol"
 DATA_DIR = "/data"
 WORKER_COUNT = 2
-DATA_CLEANUP_EXPIRY_TIME = 35 * 60 # 35 minutes ~= 3 min/round * 10 rounds + margin
-DATA_CLEANUP_CYCLE_TIME = 10 * 60 # guarantees max age 45 minutes
+DATA_CLEANUP_EXPIRY_TIME = 15 * 60 # 15 minutes ~= 1 min/round * 10 rounds + margin
+DATA_CLEANUP_CYCLE_TIME = 5 * 60 # guarantees max age 20 minutes
 LOG_DEBUG = False
 
 MAX_REQUEST_SIZE = 1024 # maximum size for request to be passed into Dolphin
