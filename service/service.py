@@ -505,7 +505,7 @@ class OrcanoFrontend:
 		persistent = {}
 		try:
 			while True:
-				client_tx.write(b"> ")
+				client_tx.write(b"\a>\a ")
 				await client_tx.drain()
 				line = await client_rx.readuntil(b"\n")
 
