@@ -14,7 +14,7 @@ import secrets
 from Crypto.Cipher import ChaCha20
 
 SERVICE_PORT = 53273
-QUEUE_MAX_LEN = 1024
+QUEUE_MAX_LEN = 64
 DOLPHIN_PATH = os.getenv("DOLPHIN_EMU_NOGUI")
 IMAGE_PATH = "./image.dol"
 DATA_DIR = "/data"
