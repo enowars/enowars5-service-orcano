@@ -47,7 +47,7 @@ def secret_shuffle(l):
 		t = l[j]
 		l[j] = l[i]
 		l[i] = t
-PROMPT_TEXT = "\a>\a "
+PROMPT_TEXT = "> "
 
 def make_paired(vals):
 	# TODO: handle quantized floats maybe
