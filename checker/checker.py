@@ -288,7 +288,7 @@ class OrcanoChecker(BaseChecker):
 
 		# Reconfigure timeouts to actually use all the time we are alotted.
 		def timeout_fun():
-			return max(1, getattr(self, "timeout", 30) - self.time_running - 1)
+			return max(1, getattr(self, "timeout", 30) - self.time_running - 3)
 		conn.timeout_fun = timeout_fun
 
 		welcome = conn.read_until(PROMPT_TEXT.encode())
