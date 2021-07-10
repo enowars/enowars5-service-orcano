@@ -379,7 +379,7 @@ class OrcanoFrontend:
 
 					def check_file_exists(path):
 						try:
-							with open(otp_path, "rb") as f:
+							with open(path, "rb") as f:
 								pass
 							exists = True
 						except FileNotFoundError:
