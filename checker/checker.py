@@ -472,6 +472,8 @@ class OrcanoChecker(BaseChecker):
 
 			cmds = []
 			cmds += [self.make_user(uid, key)]
+			cmds += [self.make_cmd("lockn", [0x20000000])]
+			cmds += [self.make_cmd("lockn", [0x20000001])]
 			cmds += self.make_put_data(nums)
 
 			conn = self.begin_conn()
@@ -576,6 +578,8 @@ class OrcanoChecker(BaseChecker):
 
 			cmds = []
 			cmds += [self.make_user(uid, key)]
+			cmds += [self.make_cmd("lockn", [0x20000000])]
+			cmds += [self.make_cmd("lockn", [0x20000001])]
 			cmds += self.make_put_data(nums)
 
 			conn = self.begin_conn()
